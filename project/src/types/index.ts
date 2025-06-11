@@ -12,16 +12,22 @@ export interface GeoPolygon {
 }
 
 // Species related types
-export interface InvasiveSpecies {
+export interface Species {
   id: string;
   name: string;
   scientificName: string;
-  type: 'plant' | 'animal' | 'fungi' | 'other';
-  habitat: string[];
-  impactLevel: 'low' | 'medium' | 'high' | 'severe';
-  firstObservedYear: number;
-  description: string;
-  imageUrl?: string;
+  status: string; // e.g., 'invasive', 'none-invasive'
+}
+
+export interface GenerateSpeciesRequest {
+  region_id: string;
+  [key: string]: string; // For additional properties
+}
+
+export interface SpeciesGenerationResult {
+  species_list: Species[];
+  generated_at: string;
+  error?: string;
 }
 
 // Simulation related types
@@ -57,7 +63,7 @@ export interface SimulationTimeStep {
 
 export interface SimulationResult {
   simulationId: string;
-  species: InvasiveSpecies | SimulationParams['customSpecies'];
+  species: Species | SimulationParams['customSpecies'];
   timeSteps: SimulationTimeStep[];
   summary: {
     maxPopulation: number;
@@ -85,4 +91,86 @@ export interface LLMAnalysis {
   }[];
   ecologicalSummary: string;
   suggestedLayers: string[];
+}
+
+// region management types
+export interface Point {
+  latitude: number;
+  longitude: number;
+}
+
+export interface Species {
+  scientificName: string;
+  status: string;
+}
+
+export interface Region {
+  id?: string;
+  name: string;
+  points: Point[];
+  species_list: Species[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CreateRegionRequest {
+  name: string;
+  points: Point[];
+  species_list?: Species[];
+}
+
+export interface UpdateRegionRequest {
+  name?: string;
+  points?: Point[];
+  species_list?: Species[];
+}
+
+// Layer management types
+
+interface LayerRequest {
+  region_id: string;
+}
+
+interface LayerUrls {
+  copernicus_url: string;
+  bio1: string;
+  bio15: string;
+  bio12: string;
+  bio5: string;
+  bio6: string;
+  srtm_url: string;
+}
+
+interface SingleLayerResponse {
+  copernicus_url?: string;
+  srtm_url?: string;
+}
+
+interface WorldClimResponse {
+  bio1: string;
+  bio15: string;
+  bio12: string;
+  bio5: string;
+  bio6: string;
+}
+
+
+// other types
+export interface ApiError {
+  message: string;
+  code?: string;
+  details?: any;
+}
+
+export interface ApiResponse<T> {
+  success: boolean;
+  data: T;
+  message?: string;
+}
+
+export interface ApiError {
+  success: false;
+  error: string;
+  message: string;
+  statusCode: number;
 }

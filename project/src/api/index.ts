@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { 
   BoundingBox, 
-  InvasiveSpecies, 
+  Species, 
   EnvironmentLayer,
   SimulationParams,
   SimulationResult,
@@ -17,7 +17,7 @@ const api = axios.create({
   },
 });
 
-export const fetchInvasiveSpecies = async (bbox: BoundingBox): Promise<InvasiveSpecies[]> => {
+export const fetchInvasiveSpecies = async (bbox: BoundingBox): Promise<Species[]> => {
   const { data } = await api.get('/invasive-species', {
     params: { bbox: `${bbox.xmin},${bbox.ymin},${bbox.xmax},${bbox.ymax}` },
   });
@@ -59,7 +59,7 @@ export const getLLMAnalysis = async (bbox: BoundingBox): Promise<LLMAnalysis> =>
 
 // Mock API for development
 export const mockAPI = {
-  getInvasiveSpecies: (): InvasiveSpecies[] => [
+  getInvasiveSpecies: (): Species[] => [
     {
       id: '1',
       name: 'Zebra Mussel',
