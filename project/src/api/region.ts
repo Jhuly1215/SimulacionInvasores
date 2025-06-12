@@ -39,8 +39,9 @@ export const regionAPI = {
    */
   createRegion: async (regionData: CreateRegionRequest): Promise<Region> => {
     try {
-      const { data } = await api.post<ApiResponse<Region>>('/region/', regionData);
-      return data.data;
+      const { data } = await api.post<Region>('/region/', regionData);
+      console.log('POST response:', data);
+      return data;
     } catch (error) {
       console.error('Error creating region:', error);
       throw error;

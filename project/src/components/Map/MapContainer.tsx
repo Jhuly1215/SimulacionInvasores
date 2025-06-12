@@ -4,6 +4,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet-draw/dist/leaflet.draw.css';
 import { useMapInteraction } from '../../hooks/useMapInteraction';
+import { useEnvironmentLayers } from '../../hooks/useEnvironmentLayers';
 import SimulationLayer from './SimulationLayer';
 import EnvironmentLayersControl from './EnvironmentLayersControl';
 import { SimulationTimeStep, Layer } from '../../types';

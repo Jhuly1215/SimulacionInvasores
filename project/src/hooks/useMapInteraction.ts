@@ -2,6 +2,7 @@ import { useRef, useState, useCallback } from 'react';
 import * as L from 'leaflet';
 import 'leaflet-draw';
 import { regionAPI } from '../api/region';
+import { layersAPI } from '../api/layers';
 import { BoundingBox, GeoPolygon, Region, Point, CreateRegionRequest } from '../types';
 
 interface UseRegionMapProps {
@@ -14,6 +15,7 @@ export const useMapInteraction = ({ onRegionSelected, onError }: UseRegionMapPro
   const [boundingBox, setBoundingBox] = useState<BoundingBox | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [regions, setRegions] = useState<Region[]>([]);
+  const [lastCreatedRegionId, setLastCreatedRegionId] = useState<string | null>(null);
   
   const drawControlRef = useRef<L.Control.Draw | null>(null);
   const drawnItemsRef = useRef<L.FeatureGroup | null>(null);
@@ -95,41 +97,60 @@ export const useMapInteraction = ({ onRegionSelected, onError }: UseRegionMapPro
 
   // Create region via API
   const createRegion = useCallback(async (name: string, speciesList: any[] = []) => {
-    if (!selectedRegion) {
-      const error = new Error('No region selected');
-      onError?.(error);
-      throw error;
+  if (!selectedRegion) {
+    const error = new Error('No region selected');
+    onError?.(error);
+    throw error;
+  }
+
+  setIsCreating(true);
+
+  try {
+    const points = geoPolygonToPoints(selectedRegion);
+
+    const regionData: CreateRegionRequest = {
+      name,
+      points,
+      species_list: speciesList,
+    };
+
+    const newRegion = await regionAPI.createRegion(regionData);
+    console.log('API Response:', newRegion);
+    const regionId = newRegion.id;
+    console.log('Extracted ID:', regionId);
+
+    if (!regionId) {
+      throw new Error('Region created but no ID returned');
     }
 
-    setIsCreating(true);
-    
+    setLastCreatedRegionId(regionId);
+    setRegions(prev => [...prev, newRegion]);
+    console.log('State after update:', { lastCreatedRegionId, regions });
+
+    // ⚠️ Nueva funcionalidad: crear capas automáticamente
+    const layerRequest = {
+      region_id: regionId,
+    };
+
     try {
-      const points = geoPolygonToPoints(selectedRegion);
-      
-      const regionData: CreateRegionRequest = {
-        name,
-        points,
-        species_list: speciesList,
-      };
-
-      const newRegion = await regionAPI.createRegion(regionData);
-      
-      // Add to local regions list
-      setRegions(prev => [...prev, newRegion]);
-      
-      // Clear current selection
-      clearDrawings();
-      
-      onRegionSelected?.(newRegion);
-      return newRegion;
-    } catch (error) {
-      const err = error as Error;
-      onError?.(err);
-      throw err;
-    } finally {
-      setIsCreating(false);
+      await layersAPI.generateAllLayers(layerRequest);
+      console.log('Layers generated successfully for region:', regionId);
+    } catch (layerError) {
+      console.error('Error generating layers:', layerError);
+      onError?.(layerError as Error); // Notificar error pero continuar
     }
-  }, [selectedRegion, geoPolygonToPoints, onRegionSelected, onError]);
+
+    clearDrawings();
+    onRegionSelected?.(newRegion);
+    return newRegion;
+  } catch (error) {
+    const err = error as Error;
+    onError?.(err);
+    throw err;
+  } finally {
+    setIsCreating(false);
+  }
+}, [selectedRegion, geoPolygonToPoints, onRegionSelected, onError]);
 
   // Get region by ID
   const getRegion = useCallback(async (regionId: string) => {
@@ -162,6 +183,7 @@ export const useMapInteraction = ({ onRegionSelected, onError }: UseRegionMapPro
     isCreating,
     regions,
     canCreateRegion,
+    lastCreatedRegionId,
     
     // Map functions
     initializeDrawControl,

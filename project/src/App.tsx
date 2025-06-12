@@ -3,7 +3,7 @@ import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import MapContainer from './components/Map/MapContainer';
 import Sidebar from './components/Sidebar/Sidebar';
-import { useSpeciesCatalog } from './hooks/useSpeciesCatalog';
+import { useSpeciesList } from './hooks/useSpeciesList';
 import { useEnvironmentLayers } from './hooks/useEnvironmentLayers';
 import { useSimulation } from './hooks/useSimulation';
 import { BoundingBox, GeoPolygon, SimulationResult } from './types';
@@ -21,8 +21,8 @@ function App() {
     isLoading: speciesLoading,
     error: speciesError,
     updateFilters: updateSpeciesFilters,
-  //  updateRegion: updateSpeciesRegion,
-  } = useSpeciesCatalog();
+    updateRegion: updateSpeciesRegion,
+  } = useSpeciesList();
 
   const {
     layers: environmentLayers,

@@ -113,16 +113,6 @@ export interface WorldClimResponse {
   bio6: string;
 }
 
-// LLM response type
-export interface LLMAnalysis {
-  speciesInRegion: {
-    name: string;
-    impact: string;
-    recommendation: string;
-  }[];
-  ecologicalSummary: string;
-  suggestedLayers: string[];
-}
 
 // region management types
 export interface Point {
