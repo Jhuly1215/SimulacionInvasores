@@ -1,115 +1,88 @@
-#File: layer_service.py
 # server/app/services/layer_service.py
-import os
-from pathlib import Path
-from typing import Dict
 
-import geopandas as gpd
-from shapely.geometry import shape
-import rasterio
-from rasterio.mask import mask
-
-from firebase_admin import storage
+import asyncio
+from app.services.srtm_service import generate_srtm_for_region
+from app.services.copernicus_service import generate_copernicus_for_region
+from app.services.worldclim_service import generate_worldclim_layers_for_region
 from app.core.firebase import db
+from firebase_admin import firestore
 
-# Firebase Storage bucket
-bucket = storage.bucket()    
 
-# --- Utility Functions ---
-def load_user_polygon(geojson: dict) -> gpd.GeoDataFrame:
+async def create_layer_urls(region_id: str) -> dict:
     """
-    Convierte un GeoJSON de Firestore en un GeoDataFrame en EPSG:4326.
+    1) Marca el documento layers/{region_id} como "running".
+    2) Llama a cada servicio para generar SRTM, Copernicus y WorldClim.
+       Cada servicio devuelve la URL pública de su capa.
+    3) Al terminar, guarda todas las URLs en Firestore y marca "completed".
+    4) Devuelve un dict con todas las URLs (srtm_url, copernicus_url, worldclim_bioX_url...).
     """
-    # Extraer geometría (suponiendo FeatureCollection)
-    feature = geojson.get("features", [])[0]
-    geom = shape(feature["geometry"])
-    gdf = gpd.GeoDataFrame([{"geometry": geom}], crs="EPSG:4326")
-    return gdf
+    # 1) Marcamos “running”
+    db.collection("layers").document(region_id).set({
+        "status": "running",
+        "started_at": firestore.SERVER_TIMESTAMP
+    }, merge=True)
 
-def clip_raster_to_polygon(
-    src_path: str,
-    polygon_gdf: gpd.GeoDataFrame,
-    dst_path: str
-) -> None:
-    """
-    Recorta el ráster en src_path según el polígono y guarda el resultado en dst_path.
-    """
-    with rasterio.open(src_path) as src:
-        # Reproyectar polígono al CRS del ráster
-        poly = polygon_gdf.to_crs(src.crs)
-        geoms = [feature for feature in poly["geometry"]]
+    try:
+        # 2.1) Generar SRTM y obtener su URL
+        srtm_url = await generate_srtm_for_region(region_id)
 
-        # Aplicar máscara y recorte
-        out_image, out_transform = mask(src, geoms, crop=True)
-        out_meta = src.meta.copy()
-        out_meta.update({
-            "driver": "GTiff",
-            "height": out_image.shape[1],
-            "width": out_image.shape[2],
-            "transform": out_transform
+        # 2.2) Generar Copernicus y obtener su URL
+        copernicus_url = await generate_copernicus_for_region(region_id)
+
+        # 2.3) Generar las 5 capas de WorldClim y obtener sus URLs como dict
+        worldclim_urls = await generate_worldclim_layers_for_region(region_id)
+        # worldclim_urls tendrá:
+        # {
+        #   "worldclim_bio1_url": "...",
+        #   "worldclim_bio5_url": "...",
+        #   "worldclim_bio6_url": "...",
+        #   "worldclim_bio12_url": "...",
+        #   "worldclim_bio15_url": "..."
+        # }
+
+        # 3) Guardar todas las URLs en Firestore
+        combined = {
+            "srtm_url": srtm_url,
+            "copernicus_url": copernicus_url,
+            **worldclim_urls
+        }
+
+        # Actualizamos el documento layers/{region_id} con las URLs
+        db.collection("layers").document(region_id).update(combined)
+
+        # 3.1) Marcamos “completed” y guardamos generated_at
+        db.collection("layers").document(region_id).update({
+            "status": "completed",
+            "generated_at": firestore.SERVER_TIMESTAMP
         })
 
-        # Crear directorio si no existe
-        Path(dst_path).parent.mkdir(parents=True, exist_ok=True)
-        with rasterio.open(dst_path, "w", **out_meta) as dst:
-            dst.write(out_image)
+        # 4) Devolvemos el dict con todas las URLs
+        return combined
 
-def upload_to_storage(local_path: str, blob_path: str) -> str:
+    except Exception as e:
+        # En caso de error, marcamos "failed" con mensaje y timestamp
+        db.collection("layers").document(region_id).update({
+            "status": "failed",
+            "error": str(e),
+            "failed_at": firestore.SERVER_TIMESTAMP 
+        })
+        # Volvemos a propagar la excepción para que FastAPI lo convierta en un 500
+        raise
+
+
+async def get_layer_urls(region_id: str) -> dict:
     """
-    Sube un archivo local a Firebase Storage y devuelve la URL pública.
+    Lee el documento layers/{region_id} en Firestore.
+    Si no existe o su status != "completed", lanza ValueError.
+    Si está “completed”, devuelve el dict completo (incluye URLs y metadatos).
     """
-    blob = bucket.blob(blob_path)
-    blob.upload_from_filename(local_path)
-    # Hacer público o usar URL firmada según configuración
-    blob.make_public()
-    return blob.public_url
-
-async def create_layer_urls(region_id: str) -> Dict[str, str]:
-    """
-    Pipeline completo: recorta rásteres al polígono de usuario y sube a Storage.
-    Devuelve un diccionario con las URLs de cada capa.
-    """
-    # 1. Leer polígono de Firestore
-    reg_ref = db.collection("regions").document(region_id)
-    reg_doc = reg_ref.get()
-    if not reg_doc.exists:
-        raise ValueError(f"Región {region_id} no encontrada")
-    geojson = reg_doc.to_dict().get("geojson")
-
-    # 2. Preparar GeoDataFrame
-    user_gdf = load_user_polygon(geojson)
-
-    # 3. Paths temporales
-    tmp_dir = f"/tmp/regions/{region_id}"
-    os.makedirs(tmp_dir, exist_ok=True)
-
-    # 4. Origen de rásteres (ajusta rutas según tu sistema)
-    datasets = {
-        "srtm": "/mnt/srtm/srtm_mosaic.tif",
-        "wc_bio1": "/mnt/worldclim/wc2.1_30s_bio_1.tif",
-        "copernicus_lc": "/mnt/copernicus/cgls_landcover_global.tif"
-    }
-
-    urls: Dict[str, str] = {}
-
-    # 5. Recorte y subida de cada capa
-    for key, src in datasets.items():
-        dst_local = os.path.join(tmp_dir, f"{key}_clipped.tif")
-        clip_raster_to_polygon(src, user_gdf, dst_local)
-
-        blob_path = f"layers/{region_id}/{key}_clipped.tif"
-        urls[key] = upload_to_storage(dst_local, blob_path)
-
-    # 6. Guardar metadatos en Firestore
-    layer_ref = db.collection("layers").document(region_id)
-    layer_ref.set({"status": "completed", **urls})
-
-    return urls
-
-async def get_layer_urls(region_id: str):
-    # Suponiendo que guardas las URLs o paths en Firestore
     layers_doc = db.collection("layers").document(region_id).get()
     if not layers_doc.exists:
-        # Lógica para desencadenar procesamiento y guardar en Firestore
-        raise ValueError("Capas aún no generadas")
-    return layers_doc.to_dict()
+        raise ValueError(f"No se encontró layers/{region_id} en Firestore.")
+
+    data = layers_doc.to_dict()
+    if data.get("status") != "completed":
+        raise ValueError(f"Las capas para la región {region_id} aún no están listas. Estado actual: {data.get('status')}")
+
+    return data
+

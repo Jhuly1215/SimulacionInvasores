@@ -26,3 +26,6 @@ dist-ssr
 .venv
 __pycache__
 firebase_credentials.json
+# Ignorar todo dentro de la carpeta de cache
+~/*
+resources/*

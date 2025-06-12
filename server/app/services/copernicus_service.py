@@ -1,77 +1,91 @@
-# app/services/copernicus_service.py
-
+#app/services/copernicus_service.py
 import os
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Dict
+import logging
 
 import geopandas as gpd
-from shapely.geometry import shape
+from shapely.geometry import Polygon
 import rasterio
 from rasterio.mask import mask
-
+from app.utils.cog import to_cog
 from firebase_admin import storage
 from app.core.firebase import db
 
 # -------------------------------------------------------------------
-# CONFIGURACIÓN: Ajusta según tu proyecto y dónde tengas el ráster
+# CONFIGURACIÓN
 # -------------------------------------------------------------------
 
-# Nombre del bucket en Firebase Storage (configurado en app/core/firebase.py)
 bucket = storage.bucket()
-
-# Carpeta temporal raíz (p.ej. "/tmp" en Linux)
 TMP_ROOT = tempfile.gettempdir()
 
-# Path local al GeoTIFF global de Copernicus Land Cover (ajusta si lo tienes en otra ruta)
-# Por ejemplo, podría ser algo como "/mnt/copernicus/cgls_landcover_global.tif"
-COPERNICUS_GLOBAL_TIF = "/mnt/copernicus/cgls_landcover_global.tif"
+# A partir de la ubicación de este archivo, subimos dos niveles y entramos en server/
+BASE_DIR = Path(__file__).resolve().parents[2]   # Raíz del proyecto (…/Invasores)
+COPERNICUS_GLOBAL_TIF = BASE_DIR / "resources"/ "copernicus" / "PROBAV_LC100_global_v3.0.1_2019-nrt_Discrete-Classification-map_EPSG-4326.tif"
 
 
 # -------------------------------------------------------------------
-# 1) Utility: cargar GeoJSON del polígono desde Firestore
+# 1) Utility: leer polígono (lista de puntos) desde Firestore
 # -------------------------------------------------------------------
 def load_user_polygon_from_firestore(region_id: str) -> gpd.GeoDataFrame:
     """
-    Recupera el GeoJSON guardado en Firestore en 'regions/{region_id}'
-    y lo convierte a un GeoDataFrame en EPSG:4326.
+    Lee 'regions/{region_id}' que debe contener:
+      {
+        "name": "...",
+        "points": [
+          {"latitude": ..., "longitude": ...},
+          ...
+        ]
+      }
+    Construye un Polygon EPSG:4326 y lo devuelve como GeoDataFrame.
     """
     reg_doc = db.collection("regions").document(region_id).get()
     if not reg_doc.exists:
         raise ValueError(f"Región {region_id} no encontrada en Firestore.")
 
-    geojson = reg_doc.to_dict().get("geojson")
-    if not geojson or "features" not in geojson or len(geojson["features"]) == 0:
-        raise ValueError(f"GeoJSON inválido para la región {region_id}.")
+    data = reg_doc.to_dict()
+    points = data.get("points")
+    if not points or not isinstance(points, list):
+        raise ValueError(f"El campo 'points' es inválido o inexistente para la región {region_id}.")
 
-    feature = geojson["features"][0]
-    geom = shape(feature["geometry"])
-    gdf = gpd.GeoDataFrame([{"geometry": geom}], crs="EPSG:4326")
+    coords = []
+    for pt in points:
+        lat = pt.get("latitude")
+        lon = pt.get("longitude")
+        if lat is None or lon is None:
+            raise ValueError(f"Punto inválido en 'points' de la región {region_id}: {pt}")
+        coords.append((lon, lat))
+
+    # Cerramos el polígono si no está cerrado
+    if coords[0] != coords[-1]:
+        coords.append(coords[0])
+
+    polygon = Polygon(coords)
+    gdf = gpd.GeoDataFrame([{"geometry": polygon}], crs="EPSG:4326")
     return gdf
 
 
 # -------------------------------------------------------------------
-# 2) Utility: recortar el ráster global al polígono del usuario
+# 2) Utility: recortar el GeoTIFF global al polígono del usuario
 # -------------------------------------------------------------------
-def clip_copernicus_to_polygon(
-    src_global_tif: str,
+def clip_local_copernicus_to_polygon(
+    src_global_tif: Path,
     polygon_gdf: gpd.GeoDataFrame,
     dst_path: str
 ) -> None:
     """
-    Recorta el ráster global de Copernicus (GeoTIFF) usando el polígono y guarda en dst_path.
+    Recorta el GeoTIFF global de Copernicus (Discrete-Classification-map 2019)
+    usando el polígono y escribe un nuevo GeoTIFF en dst_path.
     """
-    with rasterio.open(src_global_tif) as src:
-        # Asegurarse de que el polígono está en el mismo CRS que el ráster
+    with rasterio.open(str(src_global_tif)) as src:
+        # Asegurarse de que el polígono esté en el mismo CRS que el ráster
         if polygon_gdf.crs.to_string() != src.crs.to_string():
             poly = polygon_gdf.to_crs(src.crs)
         else:
             poly = polygon_gdf
 
         geoms = [geom for geom in poly["geometry"]]
-
-        # Aplica máscara (clip + rellena con nodata fuera del polígono)
         out_image, out_transform = mask(src, geoms, crop=True)
         out_meta = src.meta.copy()
         out_meta.update({
@@ -91,10 +105,10 @@ def clip_copernicus_to_polygon(
 # -------------------------------------------------------------------
 def upload_copernicus_to_storage(local_tif_path: str, region_id: str) -> str:
     """
-    Sube el GeoTIFF recortado a Firebase Storage en 'copernicus/{region_id}/'
+    Sube el GeoTIFF recortado a Firebase Storage en "copernicus/{region_id}/"
     y devuelve la URL pública.
     """
-    filename = Path(local_tif_path).name  # ej. "copernicus_clip_abc123.tif"
+    filename = Path(local_tif_path).name
     blob_path = f"copernicus/{region_id}/{filename}"
     blob = bucket.blob(blob_path)
     blob.upload_from_filename(local_tif_path)
@@ -103,41 +117,56 @@ def upload_copernicus_to_storage(local_tif_path: str, region_id: str) -> str:
 
 
 # -------------------------------------------------------------------
-# 4) Función principal: pipeline completo para Copernicus
+# 4) Función principal: pipeline completo usando el TIFF local
 # -------------------------------------------------------------------
 async def generate_copernicus_for_region(region_id: str) -> str:
     """
-    Orquesta el pipeline:
-      1. Carga el polígono desde Firestore.
-      2. Recorta el ráster global de Copernicus al polígono.
-      3. Guarda localmente el GeoTIFF recortado.
-      4. Sube a Firebase Storage y obtiene URL pública.
-      5. Almacena la URL en Firestore en 'layers/{region_id}' (campo 'copernicus_url').
-      6. Limpia archivos temporales y retorna la URL.
+    1. Carga polígono (lista de puntos) de Firestore.
+    2. Usa el GeoTIFF global local para recortarlo al polígono.
+    3. Guarda localmente el GeoTIFF recortado.
+    4. Sube a Firebase Storage y guarda 'copernicus_url' en Firestore.
+    5. Limpia archivos temporales y retorna la URL pública.
     """
-    # 1. Leer polígono en EPSG:4326
+    # 1) Leer polígono en EPSG:4326
     user_gdf = load_user_polygon_from_firestore(region_id)
 
-    # 2. Crear ruta temporal para el GeoTIFF recortado
-    tmp_folder = os.path.join(TMP_ROOT, "copernicus_tiles", region_id)
+    # 2) Verificar que exista el GeoTIFF global
+    if not COPERNICUS_GLOBAL_TIF.exists():
+        raise FileNotFoundError(f"GeoTIFF global de Copernicus no encontrado en '{COPERNICUS_GLOBAL_TIF}'")
+
+    # 3) Carpeta temporal para guardar el TIFF recortado
+    tmp_folder = os.path.join(TMP_ROOT, "copernicus_local_clips", region_id)
     os.makedirs(tmp_folder, exist_ok=True)
     clipped_tif_path = os.path.join(tmp_folder, f"copernicus_clip_{region_id}.tif")
 
-    # 3. Recortar el ráster global de Copernicus
-    if not os.path.exists(COPERNICUS_GLOBAL_TIF):
-        raise FileNotFoundError(f"GeoTIFF global de Copernicus no encontrado en '{COPERNICUS_GLOBAL_TIF}'")
-    clip_copernicus_to_polygon(COPERNICUS_GLOBAL_TIF, user_gdf, clipped_tif_path)
+    logging.getLogger("uvicorn.error").info(
+        f"Copernicus local ─ recortando {COPERNICUS_GLOBAL_TIF} con el polígono de la región {region_id}"
+    )
 
-    # 4. Subir el GeoTIFF recortado a Firebase Storage
-    copernicus_url = upload_copernicus_to_storage(clipped_tif_path, region_id)
+    # 4) Recortar localmente
+    clip_local_copernicus_to_polygon(
+        COPERNICUS_GLOBAL_TIF,
+        user_gdf,
+        clipped_tif_path
+    )
+    #4.1) ⇢ Convertir a Cloud-Optimized GeoTIFF (COG)
+    try:
+        cog_path = to_cog(Path(clipped_tif_path))
+        path_to_upload = str(cog_path)     # subimos el ._cog.tif
+    except Exception as e:
+        logging.getLogger("uvicorn.error").warning(
+            f"[COG] Falló la conversión a COG ({e}), se usará el TIFF normal."
+        )
+        path_to_upload = clipped_tif_path
 
-    # 5. Guardar metadatos en Firestore (colección 'layers')
-    db.collection("layers").document(region_id).set({
-        "copernicus_url": copernicus_url,
-        "status": "completed"
-    }, merge=True)
+    # 5) Subir el GeoTIFF recortado a Firebase Storage
+    copernicus_url = upload_copernicus_to_storage(path_to_upload, region_id)
+    db.collection("layers").document(region_id).set(
+        {"copernicus_url": copernicus_url},
+        merge=True
+    )
 
-    # 6. Limpiar archivos temporales (opcional pero recomendable)
+    # 6) Limpiar archivos temporales
     try:
         shutil.rmtree(tmp_folder)
     except Exception:
