@@ -1,109 +1,95 @@
 import { useState, useCallback } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
-import { toast } from 'react-toastify';
-import { 
-  GeoPolygon, 
-  Species, 
-  SimulationParams,
-  SimulationResponse
-} from '../types';
-import { runSimulation, mockAPI } from '../api';
+import { simulationAPI } from '../api/simulation';
+import { SimulationRequest, SimulationResponse, SimulationStatusRequest } from '../types';
 
-export const useSimulation = () => {
-  const [simulationParams, setSimulationParams] = useState<Partial<SimulationParams>>({
-    timeSteps: 20,
-    kernelType: 'exponential',
-    stochastic: true,
-    environmentLayers: [],
-  });
-  
-  const [selectedSpecies, setSelectedSpecies] = useState<Species | null>(null);
-  const [currentTimeStep, setCurrentTimeStep] = useState<number>(0);
-  const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
-  
-  // Simulation mutation
-  const simulationMutation = useMutation({
-    mutationFn: runSimulation,
-    onError: (error) => {
-      toast.error('Failed to run simulation. Please try again.');
-      console.error('Simulation error:', error);
-    },
+interface UseSimulationState {
+  isLoading: boolean;
+  error: string | null;
+  simulationData: SimulationResponse | null;
+  isSimulationRunning: boolean;
+}
+
+interface UseSimulationReturn extends UseSimulationState {
+  startSimulation: (request: SimulationRequest) => Promise<void>;
+  getSimulationStatus: (statusRequest: SimulationStatusRequest) => Promise<void>;
+  clearError: () => void;
+  resetSimulation: () => void;
+}
+
+export const useSimulation = (): UseSimulationReturn => {
+  const [state, setState] = useState<UseSimulationState>({
+    isLoading: false,
+    error: null,
+    simulationData: null,
+    isSimulationRunning: false,
   });
 
-  // For development we'll use mock data
-  const runMockSimulation = useCallback(() => {
-    if (!simulationParams.regionPolygon) {
-      toast.error('Please select a region on the map first');
-      return;
-    }
-    
-    if (!selectedSpecies && !simulationParams.customSpecies) {
-      toast.error('Please select a species or create a custom one');
-      return;
-    }
-    
-    const params: SimulationParams = {
-      regionPolygon: simulationParams.regionPolygon as GeoPolygon,
-      timeSteps: simulationParams.timeSteps || 20,
-      kernelType: simulationParams.kernelType || 'exponential',
-      stochastic: simulationParams.stochastic !== undefined ? simulationParams.stochastic : true,
-      environmentLayers: simulationParams.environmentLayers || [],
-      ...(selectedSpecies ? { speciesId: selectedSpecies.id } : {}),
-      ...(simulationParams.customSpecies ? { customSpecies: simulationParams.customSpecies } : {}),
-    };
-    
+  const startSimulation = useCallback(async (request: SimulationRequest) => {
+    setState(prev => ({ 
+      ...prev, 
+      isLoading: true, 
+      error: null,
+      isSimulationRunning: true 
+    }));
 
-  }, [simulationParams, selectedSpecies, simulationMutation]);
-
-  // Playback controls
-  const startPlayback = useCallback(() => {
-    if (!simulationMutation.data) return;
-    
-    setIsPlaying(true);
-    const totalSteps = simulationMutation.data.timeSteps.length;
-    
-    const intervalId = setInterval(() => {
-      setCurrentTimeStep((prev) => {
-        const next = prev + 1;
-        if (next >= totalSteps) {
-          clearInterval(intervalId);
-          setIsPlaying(false);
-          return prev;
-        }
-        return next;
-      });
-    }, 1000 / playbackSpeed);
-    
-    return () => clearInterval(intervalId);
-  }, [simulationMutation.data, playbackSpeed]);
-  
-  const stopPlayback = useCallback(() => {
-    setIsPlaying(false);
+    try {
+      const response = await simulationAPI.startSimulation(request);
+      setState(prev => ({
+        ...prev,
+        isLoading: false,
+        simulationData: response,
+        isSimulationRunning: !response.completed_at, // Si no tiene completed_at, sigue corriendo
+      }));
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Error desconocido al iniciar simulación';
+      setState(prev => ({
+        ...prev,
+        isLoading: false,
+        error: errorMessage,
+        isSimulationRunning: false,
+      }));
+    }
   }, []);
-  
-  const resetPlayback = useCallback(() => {
-    setCurrentTimeStep(0);
-    setIsPlaying(false);
+
+  const getSimulationStatus = useCallback(async (statusRequest: SimulationStatusRequest) => {
+    setState(prev => ({ ...prev, isLoading: true, error: null }));
+
+    try {
+      const response = await simulationAPI.getSimulationStatus(statusRequest);
+      setState(prev => ({
+        ...prev,
+        isLoading: false,
+        simulationData: response,
+        isSimulationRunning: !response.completed_at, // Si no tiene completed_at, sigue corriendo
+      }));
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Error desconocido al obtener estado';
+      setState(prev => ({
+        ...prev,
+        isLoading: false,
+        error: errorMessage,
+      }));
+    }
+  }, []);
+
+  const clearError = useCallback(() => {
+    setState(prev => ({ ...prev, error: null }));
+  }, []);
+
+  const resetSimulation = useCallback(() => {
+    setState({
+      isLoading: false,
+      error: null,
+      simulationData: null,
+      isSimulationRunning: false,
+    });
   }, []);
 
   return {
-    simulationParams,
-    setSimulationParams,
-    selectedSpecies,
-    setSelectedSpecies,
-    currentTimeStep,
-    setCurrentTimeStep,
-    isPlaying,
-    playbackSpeed,
-    setPlaybackSpeed,
-    simulationResult: simulationMutation.data,
-    isLoading: simulationMutation.isPending,
-    error: simulationMutation.error,
-    runSimulation: runMockSimulation,
-    startPlayback,
-    stopPlayback,
-    resetPlayback,
-    isSimulating: simulationMutation.isPending,
+    ...state,
+    startSimulation,
+    getSimulationStatus,
+    clearError,
+    resetSimulation,
   };
 };

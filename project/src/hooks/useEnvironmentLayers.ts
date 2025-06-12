@@ -5,34 +5,26 @@ import { layersAPI } from '../api/layers';
 
 export const useEnvironmentLayers = (regionId?: string) => {
   const [visibleLayers, setVisibleLayers] = useState<string[]>([]);
+  
   const layerRequest: LayerRequest = {
     region_id: regionId ?? '',
   };
 
-  // Carga los LayerUrls
-  const { data: availableLayerUrls, isLoading, error } = useQuery<LayerUrls[]>({
+  const { data: layerUrls, isLoading, error } = useQuery<LayerUrls>({
     queryKey: ['environmentLayers', regionId],
     queryFn: async () => {
       if (!regionId) {
-        return [];
+        // Retorna objeto vacío en lugar de array vacío
+        return {} as LayerUrls;
       }
+      // La API ya devuelve LayerUrls directamente, no necesita conversión
       const result = await layersAPI.generateAllLayers(layerRequest);
-      return Array.isArray(result) ? result : [result];
+      return result;
     },
     enabled: !!regionId,
   });
 
-  // Convierte LayerUrls a Layer agregando detalles descriptivos
-  const layers: Layer[] = Object.entries(availableLayerUrls?.[0] ?? {}).map(([key, url]) => {
-    const details = getLayerDescription(key);
-    return {
-      id: key,
-      url: url as string,
-      ...details,
-    };
-  });
-
-  // Añade detalles descriptivos a cada layer según su id
+  // Función para obtener detalles de cada layer
   function getLayerDescription(layerId: string) {
     switch (layerId) {
       case 'copernicus_url':
@@ -94,11 +86,22 @@ export const useEnvironmentLayers = (regionId?: string) => {
     }
   }
 
+  const layers: Layer[] = Object.entries(layerUrls ?? {}).map(([key, url]) => {
+    const details = getLayerDescription(key);
+    return {
+      id: key,
+      url: url as string,
+      ...details,
+    };
+  });
+
+  // Aplica visibilidad a las capas
   const layersWithVisibility = layers.map(layer => ({
     ...layer,
     visible: visibleLayers.includes(layer.id)
   }));
 
+  // Agrupa las capas por tipo
   const groupedLayers = layersWithVisibility.reduce((acc, layer) => {
     const group = acc[layer.type] || [];
     return {
@@ -107,6 +110,7 @@ export const useEnvironmentLayers = (regionId?: string) => {
     };
   }, {} as Record<string, Layer[]>);
 
+  // Función para toggle de visibilidad
   const toggleLayer = useCallback((layerId: string) => {
     setVisibleLayers(prev => {
       if (prev.includes(layerId)) {
@@ -125,6 +129,7 @@ export const useEnvironmentLayers = (regionId?: string) => {
     toggleLayer,
     visibleLayers,
     setVisibleLayers,
-    getLayerDescription
+    getLayerDescription,
+    rawData: layerUrls
   };
 };

@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from app.api import region, species, layers, simulation
 import logging
+from fastapi.middleware.cors import CORSMiddleware
 
 # Descripciones para agrupar en Swagger UI
 tags_metadata = [
@@ -39,6 +40,23 @@ app = FastAPI(
     openapi_tags=tags_metadata,
     docs_url="/docs",
     redoc_url="/redoc"
+)
+
+# Configuración de CORS
+# Lista de orígenes permitidos (puedes usar ["*"] para desarrollo)
+origins = [
+    "http://localhost:5173",  # Tu frontend de desarrollo
+    "http://127.0.0.1:5173",  # Alternativa localhost
+    # Agrega aquí otros orígenes en producción
+]
+
+# Añade el middleware CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],  # Permite todos los métodos
+    allow_headers=["*"],  # Permite todos los headers
 )
 
 # Inclusión de routers con sus tags

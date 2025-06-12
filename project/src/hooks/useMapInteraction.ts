@@ -1,16 +1,20 @@
 import { useRef, useState, useCallback } from 'react';
 import * as L from 'leaflet';
 import 'leaflet-draw';
+import { regionAPI } from '../api/region';
+import { BoundingBox, GeoPolygon, Region, Point, CreateRegionRequest } from '../types';
 
-import { BoundingBox, GeoPolygon } from '../types';
-
-interface UseMapInteractionProps {
-  onRegionSelected?: (bbox: BoundingBox, polygon: GeoPolygon) => void;
+interface UseRegionMapProps {
+  onRegionSelected?: (region: Region) => void;
+  onError?: (error: Error) => void;
 }
 
-export const useMapInteraction = ({ onRegionSelected }: UseMapInteractionProps = {}) => {
+export const useMapInteraction = ({ onRegionSelected, onError }: UseRegionMapProps = {}) => {
   const [selectedRegion, setSelectedRegion] = useState<GeoPolygon | null>(null);
   const [boundingBox, setBoundingBox] = useState<BoundingBox | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [regions, setRegions] = useState<Region[]>([]);
+  
   const drawControlRef = useRef<L.Control.Draw | null>(null);
   const drawnItemsRef = useRef<L.FeatureGroup | null>(null);
 
@@ -75,14 +79,71 @@ export const useMapInteraction = ({ onRegionSelected }: UseMapInteractionProps =
         
         setSelectedRegion(polygon);
         setBoundingBox(bbox);
-        
-        if (onRegionSelected) {
-          onRegionSelected(bbox, polygon);
-        }
       });
     }
-  }, [onRegionSelected]);
+  }, []);
 
+  // Convert GeoPolygon to Points array for API
+  const geoPolygonToPoints = useCallback((polygon: GeoPolygon): Point[] => {
+    if (!polygon.coordinates || !polygon.coordinates[0]) return [];
+    
+    return polygon.coordinates[0].map(([longitude, latitude]) => ({
+      latitude,
+      longitude,
+    }));
+  }, []);
+
+  // Create region via API
+  const createRegion = useCallback(async (name: string, speciesList: any[] = []) => {
+    if (!selectedRegion) {
+      const error = new Error('No region selected');
+      onError?.(error);
+      throw error;
+    }
+
+    setIsCreating(true);
+    
+    try {
+      const points = geoPolygonToPoints(selectedRegion);
+      
+      const regionData: CreateRegionRequest = {
+        name,
+        points,
+        species_list: speciesList,
+      };
+
+      const newRegion = await regionAPI.createRegion(regionData);
+      
+      // Add to local regions list
+      setRegions(prev => [...prev, newRegion]);
+      
+      // Clear current selection
+      clearDrawings();
+      
+      onRegionSelected?.(newRegion);
+      return newRegion;
+    } catch (error) {
+      const err = error as Error;
+      onError?.(err);
+      throw err;
+    } finally {
+      setIsCreating(false);
+    }
+  }, [selectedRegion, geoPolygonToPoints, onRegionSelected, onError]);
+
+  // Get region by ID
+  const getRegion = useCallback(async (regionId: string) => {
+    try {
+      const region = await regionAPI.getRegion(regionId);
+      return region;
+    } catch (error) {
+      const err = error as Error;
+      onError?.(err);
+      throw err;
+    }
+  }, [onError]);
+
+  // Clear drawings
   const clearDrawings = useCallback(() => {
     if (drawnItemsRef.current) {
       drawnItemsRef.current.clearLayers();
@@ -91,10 +152,26 @@ export const useMapInteraction = ({ onRegionSelected }: UseMapInteractionProps =
     }
   }, []);
 
+  // Check if region is ready to be created
+  const canCreateRegion = selectedRegion !== null && !isCreating;
+
   return {
+    // State
     selectedRegion,
     boundingBox,
+    isCreating,
+    regions,
+    canCreateRegion,
+    
+    // Map functions
     initializeDrawControl,
     clearDrawings,
+    
+    // API functions
+    createRegion,
+    getRegion,
+    
+    // Utilities
+    geoPolygonToPoints,
   };
 };

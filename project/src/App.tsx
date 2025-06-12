@@ -6,7 +6,6 @@ import Sidebar from './components/Sidebar/Sidebar';
 import { useSpeciesCatalog } from './hooks/useSpeciesCatalog';
 import { useEnvironmentLayers } from './hooks/useEnvironmentLayers';
 import { useSimulation } from './hooks/useSimulation';
-import { useLLM } from './hooks/useLLM';
 import { BoundingBox, GeoPolygon, SimulationResult } from './types';
 
 function App() {
@@ -22,7 +21,7 @@ function App() {
     isLoading: speciesLoading,
     error: speciesError,
     updateFilters: updateSpeciesFilters,
-    updateRegion: updateSpeciesRegion,
+  //  updateRegion: updateSpeciesRegion,
   } = useSpeciesCatalog();
 
   const {
@@ -49,12 +48,6 @@ function App() {
     stopPlayback,
     resetPlayback,
   } = useSimulation();
-
-  const {
-    analyzeRegion,
-    llmAnalysis,
-    isLoading: llmLoading,
-  } = useLLM();
 
   // Handle region selection on map
   const handleRegionSelected = (bbox: BoundingBox, polygon: GeoPolygon) => {
@@ -129,8 +122,6 @@ function App() {
           onUpdateTimeStep={setCurrentTimeStep}
           
           simulationResult={simulationResult}
-          llmAnalysis={llmAnalysis}
-          llmLoading={llmLoading}
           onRequestLLMAnalysis={handleRequestLLMAnalysis}
         />
       </div>
