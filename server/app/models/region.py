@@ -1,43 +1,60 @@
-from pydantic import BaseModel
-from typing import Any, Dict
+# server/app/models/region.py
 
-class RegionInput(BaseModel):
-    geojson: Dict[str, Any]
-# server/app/api/regions.py (o en app/models/region.py si prefieres separar esquemas)
 from pydantic import BaseModel, Field
-from typing import Any, Dict, List, Optional
-from fastapi import HTTPException, status
+from typing import List
+from datetime import datetime
 
-# Definimos un tipo genérico para que Pydantic acepte cualquier estructura válida de GeoJSON.
-# Podrías reforzar más validación (por ejemplo, con jsonschema), pero con esto basta para
-# asegurarnos de recibir al menos un dict con fields type y features.
+class Point(BaseModel):
+    """
+    Define un punto geográfico con latitud y longitud.
+    """
+    latitude: float = Field(..., description="Latitud del punto")
+    longitude: float = Field(..., description="Longitud del punto")
 
-class GeoJSONFeature(BaseModel):
-    type: str = Field(..., description="Debe ser 'Feature'")
-    properties: Optional[Dict[str, Any]]
-    geometry: Dict[str, Any] = Field(
-        ..., 
-        description="Debe contener 'type' (Polygon, MultiPolygon, etc.) y 'coordinates'"
-    )
-
-class GeoJSONFeatureCollection(BaseModel):
-    type: str = Field(..., description="Debe ser 'FeatureCollection'")
-    features: List[GeoJSONFeature]
+class SpeciesItem(BaseModel):
+  """
+  Información de una especie invasora generada:
+  - scientificName: nombre científico
+  - status: estado ('invasive' | 'non-invasive')
+  - recommendedLayers: lista de capas recomendadas para análisis
+  - primaryHabitat: hábitat principal
+  - impactSummary: resumen del impacto
+  """
+  scientificName: str = Field(..., description="Nombre científico de la especie")
+  status: str = Field(..., description="Estado de invasividad")
+  recommendedLayers: List[str] = Field(..., description="Capas recomendadas para esta especie")
+  primaryHabitat: str = Field(..., description="Hábitat principal de la especie")
+  impactSummary: str = Field(..., description="Resumen del impacto basado en LLM+GBIF")
 
 class RegionCreateRequest(BaseModel):
     """
-    Request para crear una región: 
-      - un nombre opcional (para tu comodidad),
-      - y el GeoJSON completo (FeatureCollection con 1 Feature mínimo).
+    Para crear o actualizar una región, el cliente envía:
+      - name: str
+      - points: List[Point]  (un array de objetos { latitude, longitude })
     """
-    nombre: Optional[str]
-    geojson: GeoJSONFeatureCollection
-
+    name: str
+    points: List[Point] = Field(
+        ..., 
+        description="Array de puntos que definen el polígono; cada punto contiene latitude y longitude"
+    )
+class RegionCreateResponse(BaseModel):
+    id: str = Field(..., description="ID de la región en Firestore")
+    name: str = Field(..., description="Nombre del área")
+    points: List[Point] = Field(
+        ..., description="Array de puntos que definen el polígono"
+    )
 class RegionResponse(BaseModel):
-    """
-    Response al leer/actualizar: incluye el ID asignado por Firestore,
-    el nombre (si existe), y el geojson.
-    """
-    id: str
-    nombre: Optional[str]
-    geojson: GeoJSONFeatureCollection
+  """
+  Esquema de respuesta para GET /region/{region_id}:
+  - id: ID del documento en Firestore
+  - latitude, longitude: coordenadas representativas (centroid o primer punto)
+  - species_generated_at: timestamp de generación de especies
+  - species_list: lista de SpeciesItem con datos enriquecidos
+  """
+  id: str = Field(..., description="ID de la región en Firestore")
+  name: str = Field(..., description="Nombre del área")
+  points: List[Point] = Field(
+        ..., description="Array de puntos que definen el polígono"
+  )
+  species_generated_at: datetime = Field(...,description="Fecha y hora en que se generó la lista de especies")
+  species_list: List[SpeciesItem] = Field(...,description="Lista de especies invasoras con detalle enriquecido")

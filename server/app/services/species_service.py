@@ -1,168 +1,187 @@
-# app/services/species_service.py
-
-import os
-import json
 import requests
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 import geopandas as gpd
-from shapely.geometry import shape
-
+from shapely.geometry import Polygon
+from app.services.llm_transformers import llama_instruct_generate
 from app.core.firebase import db
+from firebase_admin import firestore
+import logging
+logger = logging.getLogger(__name__)
 
-# Importamos nuestro pipeline de Transformers
-from app.services.llm_transformers import pipe
-
-# -------------------------------------------------------------------
-# 1) Funciones para GBIF
-# -------------------------------------------------------------------
+# -------------------------------------------------------
+# Funciones de apoyo para GBIF
+# -------------------------------------------------------
 def fetch_gbif_occurrences(bbox: List[float], limit: int = 1000) -> List[Dict]:
     """
-    Consulta a la API de GBIF para ocurrencias dentro de un bbox WGS84.
-    Devuelve la lista cruda de ocurrencias (cada diccionario).
+    Consulta GBIF /occurrence/search con bbox WGS84 y devuelve 'results'.
+    Incluye establishmentMeans y degreeOfEstablishment en la respuesta.
     """
-    min_lon, min_lat, max_lon, max_lat = bbox
     polygon_wkt = (
-        f"POLYGON(({min_lon} {min_lat}, {min_lon} {max_lat}, "
-        f"{max_lon} {max_lat}, {max_lon} {min_lat}, {min_lon} {min_lat}))"
+        f"POLYGON(({bbox[0]} {bbox[1]}, {bbox[0]} {bbox[3]}, "
+        f"{bbox[2]} {bbox[3]}, {bbox[2]} {bbox[1]}, {bbox[0]} {bbox[1]}))"
     )
-    url = "https://api.gbif.org/v1/occurrence/search"
     params = {
-        "geometry": polygon_wkt,
-        "limit": limit,
-        "hasCoordinate": "true",
-        # Opcional: filtrar establishmentMeans para “INTRODUCED”
+        'geometry': polygon_wkt,
+        'limit': limit,
+        'hasCoordinate': 'true',
+        'fields': 'scientificName,acceptedScientificName,establishmentMeans,degreeOfEstablishment,countryCode,habitat,higherGeography'
     }
-    resp = requests.get(url, params=params, timeout=30)
+    resp = requests.get(
+        'https://api.gbif.org/v1/occurrence/search',
+        params=params,
+        timeout=20
+    )
     resp.raise_for_status()
-    return resp.json().get("results", [])
-
-def extract_unique_scientific_names(raw_occurrences: List[Dict]) -> List[str]:
+    return resp.json().get('results', [])
+# -------------------------------------------------------
+#  Función para resolver nombre común → nombre científico
+# -------------------------------------------------------
+async def resolve_scientific_name(common_name: str) -> str:
     """
-    Extrae el campo 'scientificName' de cada ocurrencia y devuelvela sin duplicados.
+    Usa un LLM para traducir un nombre común proporcionado por el usuario
+    al nombre científico estándar.
     """
-    names = set()
-    for occ in raw_occurrences:
-        sci_name = occ.get("scientificName")
-        if sci_name:
-            names.add(sci_name.strip())
-    return sorted(names)
+    system = (
+        "Eres un taxónomo experto. Cuando te proporcione un nombre común de una especie, "
+        "devuélveme únicamente su nombre científico (género y especie), sin texto adicional."
+    )
+    user = f"Nombre común: {common_name}\nNombre científico:"  
+    llm_output = llama_instruct_generate(
+        system_prompt=system,
+        user_prompt=user,
+        max_new_tokens=20,
+        do_sample=False
+    )
+    # Se asume que el LLM responde algo como "Passer domesticus"
+    sci = llm_output.strip().split()[0:2]
+    return " ".join(sci)
 
-# -------------------------------------------------------------------
-# 2) Prompt en texto puro
-# -------------------------------------------------------------------
-PROMPT_PREFIX = """
-Actúa como un experto en ecología y control de especies invasoras.
-Se te proporciona una lista de nombres científicos de especies que han sido registradas dentro de una región geográfica. Para cada especie, realiza los siguientes pasos:
+# -------------------------------------------------------
+# Función principal: obtiene info de especie por nombre científico
+# -------------------------------------------------------
+async def get_species_info_by_common_name(common_name: str) -> Dict:
+    """
+    Resuelve el nombre científico desde un nombre común y obtiene información global de GBIF:
+    - scientificName: nombre científico obtenido
+    - occurrenceCount: número total de ocurrencias globales
+    - examples: hasta 5 registros con establishmentMeans, degreeOfEstablishment y countryCode
+    """
+    sci_name = await resolve_scientific_name(common_name)
 
-1. Verifica si la especie es considerada invasora o introducida (consulta virtualmente fuentes como CABI, EASIN, o literatura ecológica).
-2. Si es invasora, genera un breve resumen (1-2 oraciones) de su impacto ecológico general en otro entorno similar (p. ej., desplazamiento de nativas, alteración de suelo, vectores de enfermedad).
-3. Identifica el(los) hábitat(es) principal(es) en los que prospera (p. ej., “bosque ribario”, “praderas”, “bordes de caminos”, “áreas urbanas”).
-4. Sugiere qué capas ambientales serían más relevantes para simular su invasión (p. ej., “landcover”, “hydrology”, “climate_bio1”, “elevation”).
-5. Si no es invasora, ignora la especie (no la incluyas en el resultado final).
+    # Búsqueda global con nombre científico
+    resp = requests.get(
+        'https://api.gbif.org/v1/occurrence/search',
+        params={'scientificName': sci_name, 'limit': 100, 'hasCoordinate': 'true'},
+        timeout=20
+    )
+    resp.raise_for_status()
+    occs = resp.json().get('results', [])
 
-Produce tu respuesta **solo** como un JSON válido con el siguiente formato (lista de objetos). Ejemplo:
+    # Construir respuesta
+    info = {
+        'commonName': common_name,
+        'scientificName': sci_name,
+        'occurrenceCount': len(occs),
+        'examples': []
+    }
+    for occ in occs[:5]:
+        info['examples'].append({
+            'establishmentMeans': occ.get('establishmentMeans'),
+            'degreeOfEstablishment': occ.get('degreeOfEstablishment'),
+            'countryCode': occ.get('countryCode')
+        })
 
-[
-  {
-    "scientificName": "Ailanthus altissima",
-    "commonName": "Tree of Heaven",
-    "status": "invasive",
-    "impactSummary": "Especie de rápido crecimiento que desplaza plantas nativas y endurece el suelo.",
-    "primaryHabitat": ["bosque ribario", "bordes de caminos"],
-    "recommendedLayers": ["landcover", "climate_bio1", "elevation"]
-  },
-  {
-    "scientificName": "Fallopia japonica",
-    "commonName": "Knotweed japonés",
-    "status": "invasive",
-    "impactSummary": "Desplaza la vegetación ribereña y provoca erosión en las riberas de ríos.",
-    "primaryHabitat": ["riberas", "áreas perturbadas"],
-    "recommendedLayers": ["hydrology", "landcover", "slope"]
-  }
-]
-
-**Si no hay especies invasoras, responde con `[]` exactamente.**
-"""
-
-# -------------------------------------------------------------------
-# 3) Función principal: LLaMA + Transformers
-# -------------------------------------------------------------------
+    return info
+# -------------------------------------------------------
+# Función principal
+# -------------------------------------------------------
 async def generate_invasive_species_summary(region_id: str) -> List[Dict]:
     """
-    1) Leer el GeoJSON de Firestore en 'regions/{region_id}'.
-    2) Calcular bounding box WGS84 y consultar GBIF.
-    3) Extraer nombres científicos únicos (hasta 50).
-    4) Armar prompt completo y enviarlo a LLaMA vía pipeline de Transformers.
-    5) Parsear la cadena JSON devuelta por LLaMA.
-    6) Guardar en Firestore en 'species/{region_id}' y retornar la lista.
+    Extrae ocurrencias de GBIF para la región y clasifica cada especie como 'invasive' o 'non-invasive'.
+    Usa establishmentMeans y degreeOfEstablishment (vocabulary completo) sin LLM.
     """
-    # 3.1) Leer región
-    region_doc = db.collection("regions").document(region_id).get()
+    logger.info(f"🔍 Extracción de especies para región {region_id}")
+
+    # Leer región y coordenadas
+    region_doc = db.collection('regions').document(region_id).get()
     if not region_doc.exists:
-        raise ValueError(f"Región {region_id} no encontrada en Firestore.")
+        raise ValueError(f"Región '{region_id}' no encontrada.")
+    data = region_doc.to_dict()
+    points = data.get('points', [])
+    coords = [(p['longitude'], p['latitude']) for p in points]
+    if not coords:
+        raise ValueError(f"No hay puntos en la región '{region_id}'.")
+    if coords[0] != coords[-1]:
+        coords.append(coords[0])
 
-    geojson = region_doc.to_dict().get("geojson")
-    if not geojson or "features" not in geojson or len(geojson["features"]) == 0:
-        raise ValueError(f"GeoJSON inválido para la región {region_id}.")
+    # Country code de la región
+    region_country = data.get('country', '').upper()
 
-    # 3.2) Calcular bounding box
-    feature = geojson["features"][0]
-    geom = shape(feature["geometry"])
-    gdf = gpd.GeoDataFrame([{"geometry": geom}], crs="EPSG:4326")
-    min_lon, min_lat, max_lon, max_lat = gdf.total_bounds
+    # Construir bounding box
+    poly = Polygon(coords)
+    gdf = gpd.GeoDataFrame([{'geometry': poly}], crs='EPSG:4326')
+    bbox = list(gdf.total_bounds)
 
-    # 3.3) Llamar a GBIF
-    bbox = [min_lon, min_lat, max_lon, max_lat]
-    raw_occurs = fetch_gbif_occurrences(bbox=bbox, limit=1000)
-
-    # 3.4) Extraer nombres únicos
-    sci_names = extract_unique_scientific_names(raw_occurs)
-
-    # Si no hay nombres, guardamos doc vacío y retornamos lista vacía
-    if not sci_names:
-        db.collection("species").document(region_id).set({
-            "status": "completed",
-            "species_list": [],
-            "generated_at": db.SERVER_TIMESTAMP
+    # Obtener ocurrencias
+    occurrences = fetch_gbif_occurrences(bbox)
+    for occ in occurrences:
+        raw_name = occ.get('scientificName') or occ.get('acceptedScientificName')
+        logger.debug(f"RAW_DATA -> {raw_name}: establishmentMeans={occ.get('establishmentMeans')}, "
+                     f"degreeOfEstablishment={occ.get('degreeOfEstablishment')}, "
+                     f"countryCode={occ.get('countryCode')}")
+        
+    if not occurrences:
+        db.collection('regions').document(region_id).update({
+            'species_list': [],
+            'species_generated_at': firestore.SERVER_TIMESTAMP
         })
         return []
 
-    # Solo tomamos los primeros 50 para no saturar el contexto
-    sci_names = sci_names[:50]
-    species_list_str = "\n".join(sci_names)
+    # Clasificar especies
+    species_dict: Dict[str, Dict] = {}
+    # grados que indican establecimiento
+    invasive_degrees = {
+        'RELEASED', 'ESTABLISHED', 'SPREADING', 'WIDESPREADINVASIVE', 'COLONISING', 'INVASIVE'
+    }
+    for occ in occurrences:
+        name = occ.get('scientificName') or occ.get('acceptedScientificName')
+        if not name:
+            continue
+        if name not in species_dict:
+            species_dict[name] = {
+                'scientificName': name,
+                'status': 'non-invasive',
+                'impactSummary': '',
+                'primaryHabitat': [],
+                'recommendedLayers': []
+            }
+        obj = species_dict[name]
+        est_means = (occ.get('establishmentMeans') or '').upper()
+        deg_est = (occ.get('degreeOfEstablishment') or '').replace(' ', '').upper()
+        occ_country = (occ.get('countryCode') or '').upper()
+        # Determinar invasiva
+        if est_means == 'INTRODUCED' or deg_est in invasive_degrees or \
+           (region_country and occ_country and occ_country != region_country):
+            obj['status'] = 'invasive'
+            obj['impactSummary'] = (
+                f"Introducción detectada: establishmentMeans={est_means}, degreeOfEstablishment={deg_est}, país={occ_country}"  
+            )
+            obj['recommendedLayers'] = ['introduced_range', 'habitat_suitability']
+        # Reconocer hábitat
+        habitat = occ.get('habitat') or occ.get('higherGeography')
+        if habitat and not obj['primaryHabitat']:
+            obj['primaryHabitat'] = [habitat]
 
-    # 3.5) Armar el prompt completo
-    prompt = PROMPT_PREFIX + "\n\nLista de especies:\n" + species_list_str + "\n\nRespuesta JSON:"
+    species_list = list(species_dict.values())
 
-    # 3.6) Enviar a LLaMA vía Transformers pipeline
-    # Aquí pipe(prompt) retorna una lista de diccionarios:
-    #    [ { "generated_text": "…texto con el JSON…" } ]
-    response = pipe(prompt)
-    if not response or "generated_text" not in response[0]:
-        raise RuntimeError("El pipeline de Transformers no devolvió generated_text.")
-
-    llm_output_text = response[0]["generated_text"].strip()
-
-    # 3.7) A veces el modelo agrega texto antes o después del JSON. Extraemos solo el bloque JSON:
-    import re
-    match = re.search(r"(\[.*\])", llm_output_text, re.DOTALL)
-    if match:
-        json_text = match.group(1)
-    else:
-        # Si no encontramos corchetes, intentamos parsear todo el texto
-        json_text = llm_output_text
-
-    try:
-        invasive_species = json.loads(json_text)
-    except json.JSONDecodeError as e:
-        raise RuntimeError(f"Error parseando JSON de LLaMA: {e}\nTexto crudo del LLM:\n{llm_output_text}")
-
-    # 3.8) Guardar en Firestore
-    db.collection("species").document(region_id).set({
-        "status": "completed",
-        "species_list": invasive_species,
-        "generated_at": db.SERVER_TIMESTAMP
+    # Guardar en Firestore
+    db.collection('regions').document(region_id).update({
+        'species_list': species_list,
+        'species_generated_at': firestore.SERVER_TIMESTAMP
     })
+    logger.info(f"✅ Procesadas {len(species_list)} especies en {region_id}")
+    return species_list
 
-    return invasive_species
+# Alias para compatibilidad
+generate_species_summary = generate_invasive_species_summary

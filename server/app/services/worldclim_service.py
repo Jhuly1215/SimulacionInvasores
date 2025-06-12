@@ -1,59 +1,81 @@
+# File: server/app/services/worldclim_service.py
+
 import os
 import shutil
 import tempfile
 from pathlib import Path
 from typing import Dict
-
+from app.utils.cog import to_cog 
 import geopandas as gpd
-from shapely.geometry import shape
+from shapely.geometry import Polygon
 import rasterio
 from rasterio.mask import mask
-
 from firebase_admin import storage
 from app.core.firebase import db
-
+import logging
 # -------------------------------------------------------------------
 # CONFIGURACIÓN: Ajusta según tu proyecto y dónde estén los GeoTIFFs
 # -------------------------------------------------------------------
 
-# Firebase Storage bucket (configurado en app/core/firebase.py)
+
 bucket = storage.bucket()
-
-# Carpeta temporal raíz (p.ej. "/tmp" en Linux)
 TMP_ROOT = tempfile.gettempdir()
+BASE_DIR = Path(__file__).resolve().parents[2]
+WORLDCLIM_DIR = BASE_DIR / "resources" / "worldclim"
 
-# Directorio donde están almacenados globalmente los GeoTIFFs de WorldClim
-WORLDCLIM_DIR = "/mnt/worldclim"
-
-# Mapping de variables bioclimáticas a sus archivos GeoTIFF en WORLDCLIM_DIR
+# Mapping de variables bioclimáticas a sus archivos GeoTIFF
 decl_var_files = {
-    "bio1": "wc2.1_30s_bio_1.tif",    # Temperatura media anual
-    "bio5": "wc2.1_30s_bio_5.tif",    # Temperatura máxima mes más cálido
-    "bio6": "wc2.1_30s_bio_6.tif",    # Temperatura mínima mes más frío
-    "bio12": "wc2.1_30s_bio_12.tif",  # Precipitación anual
-    "bio15": "wc2.1_30s_bio_15.tif"   # Estacionalidad precipitación
+    "bio1":  "wc2.1_30s_bio_1.tif",    # Temperatura media anual
+    "bio5":  "wc2.1_30s_bio_5.tif",    # Temperatura máxima mes más cálido
+    "bio6":  "wc2.1_30s_bio_6.tif",    # Temperatura mínima mes más frío
+    "bio12": "wc2.1_30s_bio_12.tif",   # Precipitación anual
+    "bio15": "wc2.1_30s_bio_15.tif"    # Estacionalidad precipitación
 }
+
 
 # -------------------------------------------------------------------
 # 1) Utility: cargar GeoJSON del polígono desde Firestore
 # -------------------------------------------------------------------
 def load_user_polygon_from_firestore(region_id: str) -> gpd.GeoDataFrame:
     """
-    Recupera el GeoJSON guardado en Firestore en 'regions/{region_id}'
-    y lo convierte a un GeoDataFrame en EPSG:4326.
+    Recupera del documento en Firestore:
+       {
+         "name": "...",
+         "points": [
+           {"latitude": -19.0447, "longitude": -65.2570},
+           {"latitude": -19.0420, "longitude": -65.2535},
+           {"latitude": -19.0461, "longitude": -65.2527},
+           …
+         ]
+       }
+    Construye un Polygon a partir de esos puntos (lon, lat)
+    y retorna un GeoDataFrame EPSG:4326.
     """
     reg_doc = db.collection("regions").document(region_id).get()
     if not reg_doc.exists:
         raise ValueError(f"Región {region_id} no encontrada en Firestore.")
 
-    geojson = reg_doc.to_dict().get("geojson")
-    if not geojson or "features" not in geojson or len(geojson["features"]) == 0:
-        raise ValueError(f"GeoJSON inválido para la región {region_id}.")
+    data = reg_doc.to_dict()
+    points = data.get("points")
+    if not points or not isinstance(points, list):
+        raise ValueError(f"El campo 'points' es inválido o inexistente para la región {region_id}.")
 
-    feature = geojson["features"][0]
-    geom = shape(feature["geometry"])
-    gdf = gpd.GeoDataFrame([{"geometry": geom}], crs="EPSG:4326")
+    coords = []
+    for pt in points:
+        lat = pt.get("latitude")
+        lon = pt.get("longitude")
+        if lat is None or lon is None:
+            raise ValueError(f"Punto inválido en 'points' de la región {region_id}: {pt}")
+        coords.append((lon, lat))
+
+    # Asegurarse de cerrar el polígono:
+    if coords[0] != coords[-1]:
+        coords.append(coords[0])
+
+    polygon = Polygon(coords)
+    gdf = gpd.GeoDataFrame([{"geometry": polygon}], crs="EPSG:4326")
     return gdf
+
 
 # -------------------------------------------------------------------
 # 2) Utility: recortar GeoTIFF global al polígono
@@ -74,7 +96,6 @@ def clip_raster_to_polygon(
             poly = polygon_gdf
 
         geoms = [geom for geom in poly["geometry"]]
-
         out_image, out_transform = mask(src, geoms, crop=True)
         out_meta = src.meta.copy()
         out_meta.update({
@@ -88,12 +109,13 @@ def clip_raster_to_polygon(
         with rasterio.open(dst_path, "w", **out_meta) as dst:
             dst.write(out_image)
 
+
 # -------------------------------------------------------------------
 # 3) Utility: subir GeoTIFF recortado a Firebase Storage
 # -------------------------------------------------------------------
 def upload_worldclim_to_storage(local_tif_path: str, region_id: str, var_name: str) -> str:
     """
-    Sube el GeoTIFF recortado a Firebase Storage en `worldclim/{region_id}/{filename}`
+    Sube el GeoTIFF recortado a Firebase Storage en `worldclim/{region_id}/{filename}` 
     y devuelve la URL pública.
     """
     filename = Path(local_tif_path).name  # ej. "worldclim_bio1_clip_<region_id>.tif"
@@ -102,6 +124,7 @@ def upload_worldclim_to_storage(local_tif_path: str, region_id: str, var_name: s
     blob.upload_from_filename(local_tif_path)
     blob.make_public()
     return blob.public_url
+
 
 # -------------------------------------------------------------------
 # 4) Función principal: pipeline completo para múltiples variables
@@ -130,25 +153,37 @@ async def generate_worldclim_layers_for_region(region_id: str) -> Dict[str, str]
 
     # 3. Iterar sobre cada variable deseada
     for var_name, tif_filename in decl_var_files.items():
-        # 3a. Ruta al GeoTIFF global
-        src_tif_path = os.path.join(WORLDCLIM_DIR, tif_filename)
-        if not os.path.exists(src_tif_path):
-            raise FileNotFoundError(f"GeoTIFF de WorldClim para {var_name} no encontrado en '{src_tif_path}'")
+        # 3a. Ruta al GeoTIFF global (dentro de resources/worldclim)
+        src_tif_path = WORLDCLIM_DIR / tif_filename
+        if not src_tif_path.exists():
+            raise FileNotFoundError(
+                f"GeoTIFF de WorldClim para {var_name} no encontrado en '{src_tif_path}'"
+            )
 
-        # 3b. Definir ruta local para el clip
+        # 3b. Definir ruta local para el archivo recortado
         clipped_name = f"worldclim_{var_name}_clip_{region_id}.tif"
         dst_path = os.path.join(tmp_folder, clipped_name)
 
-        # 3c. Recortar
-        clip_raster_to_polygon(src_tif_path, user_gdf, dst_path)
+        # 3c. Recortar con la función utilitaria
+        clip_raster_to_polygon(str(src_tif_path), user_gdf, dst_path)
 
-        # 3d. Subir a Storage
-        url = upload_worldclim_to_storage(dst_path, region_id, var_name)
+        #3c.1  ⇢ Convertir a Cloud-Optimized GeoTIFF
+        try:
+            cog_path = to_cog(Path(dst_path))
+            path_to_upload = str(cog_path)
+        except Exception as e:
+            logging.getLogger("uvicorn.error").warning(
+                f"[COG] {var_name}: conversión fallida ({e}); subiendo el TIFF normal."
+            )
+            path_to_upload = dst_path
+
+        # 3d. Subir el recorte a Storage y obtener URL pública
+        url = upload_worldclim_to_storage(path_to_upload, region_id, var_name)
         urls[f"worldclim_{var_name}_url"] = url
 
-    # 4. Guardar todas las URLs en Firestore (colección 'layers')
-    #    Se usa merge=True para no sobrescribir otros campos existentes (p.ej. srtm_url, copernicus_url)
-    db.collection("layers").document(region_id).set({**urls, "status": "completed"}, merge=True)
+    # 4. Guardar todas las URLs en Firestore (colección 'layers/{region_id}')
+    #    Se usa merge=True para no sobrescribir otros campos existentes
+    db.collection("layers").document(region_id).set(urls, merge=True)
 
     # 5. Limpiar archivos temporales
     try:
