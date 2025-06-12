@@ -5,7 +5,7 @@ import 'leaflet-draw/dist/leaflet.draw.css';
 import { useMapInteraction } from '../../hooks/useMapInteraction';
 import SimulationLayer from './SimulationLayer';
 import EnvironmentLayersControl from './EnvironmentLayersControl';
-import { SimulationTimeStep, EnvironmentLayer } from '../../types';
+import { SimulationTimeStep, Layer} from '../../types';
 
 // Need to fix Leaflet icon issues with webpack
 import L from 'leaflet';
@@ -37,7 +37,7 @@ function DrawControl({ onRegionSelected }: { onRegionSelected: any }) {
 interface MapContainerProps {
   onRegionSelected: (bbox: any, polygon: any) => void;
   currentTimeStep?: SimulationTimeStep;
-  environmentLayers?: EnvironmentLayer[];
+  environmentLayers?: Layer[];
   className?: string;
 }
 

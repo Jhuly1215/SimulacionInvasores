@@ -17,6 +17,9 @@ export interface Species {
   name: string;
   scientificName: string;
   status: string; // e.g., 'invasive', 'none-invasive'
+  impactSummary: "low" | "medium" | "high" | "severe";// Summary of ecological impact
+  primaryHabitat: string[]; // Primary habitat type
+  recommendedLayers: string[]; // Recommended environmental layers for analysis
 }
 
 export interface GenerateSpeciesRequest {
@@ -74,12 +77,40 @@ export interface SimulationResult {
 }
 
 // Environment layer types
-export interface EnvironmentLayer {
+export interface LayerRequest {
+  region_id: string;
+}
+
+export interface Layer {
   id: string;
   name: string;
   description: string;
-  type: 'landUse' | 'elevation' | 'climate' | 'hydrology' | 'barrier';
+  type: string;
   visible: boolean;
+  url: string;
+}
+
+export interface LayerUrls {
+  copernicus_url: string;
+  bio1: string;
+  bio15: string;
+  bio12: string;
+  bio5: string;
+  bio6: string;
+  srtm_url: string;
+}
+
+export interface SingleLayerResponse {
+  copernicus_url?: string;
+  srtm_url?: string;
+}
+
+export interface WorldClimResponse {
+  bio1: string;
+  bio15: string;
+  bio12: string;
+  bio5: string;
+  bio6: string;
 }
 
 // LLM response type
@@ -97,11 +128,6 @@ export interface LLMAnalysis {
 export interface Point {
   latitude: number;
   longitude: number;
-}
-
-export interface Species {
-  scientificName: string;
-  status: string;
 }
 
 export interface Region {
@@ -125,35 +151,35 @@ export interface UpdateRegionRequest {
   species_list?: Species[];
 }
 
-// Layer management types
-
-interface LayerRequest {
+// Types for simulation requests and responses
+export interface SimulationRequest {
   region_id: string;
+  species_name: string;
+  initial_population: number;
+  growth_rate: number;
+  dispersal_kernel: number;
+  timesteps: number;
 }
 
-interface LayerUrls {
-  copernicus_url: string;
-  bio1: string;
-  bio15: string;
-  bio12: string;
-  bio5: string;
-  bio6: string;
-  srtm_url: string;
+export interface SimulationParameters {
+  species_name: string;
+  initial_population: number;
+  growth_rate: number;
+  dispersal_kernel: number;
+  timesteps: number;
 }
 
-interface SingleLayerResponse {
-  copernicus_url?: string;
-  srtm_url?: string;
+export interface SimulationStatusRequest {
+  region_id: string;
+  paramereters: SimulationParameters;
+  requested_at: string;
+  estatus: 'running' | 'completed' | 'failed';
+  timesteps: string[];
 }
 
-interface WorldClimResponse {
-  bio1: string;
-  bio15: string;
-  bio12: string;
-  bio5: string;
-  bio6: string;
+export interface SimulationResponse {
+  completed_at?: string;
 }
-
 
 // other types
 export interface ApiError {

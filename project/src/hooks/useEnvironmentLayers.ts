@@ -1,27 +1,111 @@
 import { useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { EnvironmentLayer } from '../types';
-import { fetchEnvironmentLayers, mockAPI } from '../api';
+import { LayerUrls, LayerRequest, Layer } from '../types';
+import { layersAPI } from '../api/layers';
 
 export const useEnvironmentLayers = (regionId?: string) => {
   const [visibleLayers, setVisibleLayers] = useState<string[]>([]);
-  
-  const { data: availableLayers, isLoading, error } = useQuery<EnvironmentLayer[]>({
+  const layerRequest: LayerRequest = {
+    region_id: regionId ?? '',
+  };
+
+  // Carga los LayerUrls
+  const { data: availableLayerUrls, isLoading, error } = useQuery<LayerUrls[]>({
     queryKey: ['environmentLayers', regionId],
     queryFn: async () => {
       if (!regionId) {
         return [];
       }
-
-      // In development, use mock data
-      if (import.meta.env.DEV) {
-        return mockAPI.getEnvironmentLayers();
-      }
-      
-      return fetchEnvironmentLayers(regionId);
+      const result = await layersAPI.generateAllLayers(layerRequest);
+      return Array.isArray(result) ? result : [result];
     },
     enabled: !!regionId,
   });
+
+  // Convierte LayerUrls a Layer agregando detalles descriptivos
+  const layers: Layer[] = Object.entries(availableLayerUrls?.[0] ?? {}).map(([key, url]) => {
+    const details = getLayerDescription(key);
+    return {
+      id: key,
+      url: url as string,
+      ...details,
+    };
+  });
+
+  // Añade detalles descriptivos a cada layer según su id
+  function getLayerDescription(layerId: string) {
+    switch (layerId) {
+      case 'copernicus_url':
+        return {
+          name: 'Cobertura terrestre (Copernicus)',
+          description: 'Imágenes satelitales o datos raster de observación de la Tierra provenientes del programa Copernicus de la Unión Europea.',
+          type: 'landuse',
+          visible: false
+        };
+      case 'worldclim_bio1_url':
+        return {
+          name: 'Temperatura media anual (WorldClim BIO1)',
+          description: 'Temperatura media anual derivada de datos climáticos globales WorldClim.',
+          type: 'climate',
+          visible: false
+        };
+      case 'worldclim_bio5_url':
+        return {
+          name: 'Temperatura máxima del mes más cálido (WorldClim BIO5)',
+          description: 'Temperatura máxima del mes más cálido según WorldClim.',
+          type: 'climate',
+          visible: false
+        };
+      case 'worldclim_bio6_url':
+        return {
+          name: 'Temperatura mínima del mes más frío (WorldClim BIO6)',
+          description: 'Temperatura mínima del mes más frío según WorldClim.',
+          type: 'climate',
+          visible: false
+        };
+      case 'worldclim_bio12_url':
+        return {
+          name: 'Precipitación anual total (WorldClim BIO12)',
+          description: 'Precipitación anual total según WorldClim.',
+          type: 'climate',
+          visible: false
+        };
+      case 'worldclim_bio15_url':
+        return {
+          name: 'Estacionalidad de la precipitación (WorldClim BIO15)',
+          description: 'Coeficiente de variación de la precipitación anual según WorldClim.',
+          type: 'climate',
+          visible: false
+        };
+      case 'srtm_url':
+        return {
+          name: 'Elevación del terreno (SRTM)',
+          description: 'Altitud o elevación del terreno del modelo digital de elevación SRTM.',
+          type: 'elevation',
+          visible: false
+        };
+      default:
+        return {
+          name: layerId,
+          description: '',
+          type: 'other',
+          visible: false
+        };
+    }
+  }
+
+  const layersWithVisibility = layers.map(layer => ({
+    ...layer,
+    visible: visibleLayers.includes(layer.id)
+  }));
+
+  const groupedLayers = layersWithVisibility.reduce((acc, layer) => {
+    const group = acc[layer.type] || [];
+    return {
+      ...acc,
+      [layer.type]: [...group, layer]
+    };
+  }, {} as Record<string, Layer[]>);
 
   const toggleLayer = useCallback((layerId: string) => {
     setVisibleLayers(prev => {
@@ -33,19 +117,6 @@ export const useEnvironmentLayers = (regionId?: string) => {
     });
   }, []);
 
-  const layersWithVisibility = availableLayers?.map(layer => ({
-    ...layer,
-    visible: visibleLayers.includes(layer.id)
-  })) || [];
-
-  const groupedLayers = layersWithVisibility.reduce((acc, layer) => {
-    const group = acc[layer.type] || [];
-    return {
-      ...acc,
-      [layer.type]: [...group, layer]
-    };
-  }, {} as Record<string, EnvironmentLayer[]>);
-
   return {
     layers: layersWithVisibility,
     groupedLayers,
@@ -54,5 +125,6 @@ export const useEnvironmentLayers = (regionId?: string) => {
     toggleLayer,
     visibleLayers,
     setVisibleLayers,
+    getLayerDescription
   };
 };

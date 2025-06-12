@@ -1,10 +1,10 @@
 import React from 'react';
 import { Layers as LayersIcon } from 'lucide-react';
-import { EnvironmentLayer } from '../../types';
+import { Layer } from '../../types';
 import { Loader } from '../UI/Loader';
 
 interface LayersPanelProps {
-  layers: EnvironmentLayer[];
+  layers: Layer[];
   isLoading: boolean;
   onToggleLayer: (layerId: string) => void;
 }
@@ -27,7 +27,7 @@ const LayersPanel: React.FC<LayersPanelProps> = ({
   }
 
   // Group layers by type
-  const groupedLayers = layers.reduce<Record<string, EnvironmentLayer[]>>((groups, layer) => {
+  const groupedLayers = layers.reduce<Record<string, Layer[]>>((groups, layer) => {
     const group = groups[layer.type] || [];
     return { ...groups, [layer.type]: [...group, layer] };
   }, {});

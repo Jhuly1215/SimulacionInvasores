@@ -1,32 +1,18 @@
 import React from 'react';
 import { LayersControl, TileLayer } from 'react-leaflet';
-import { EnvironmentLayer } from '../../types';
+import { LayerUrls, Layer } from '../../types';
 
 const { Overlay } = LayersControl;
 
-// Mock tile URLs for different layer types
-const getTileUrl = (layer: EnvironmentLayer) => {
-  switch (layer.type) {
-    case 'landUse':
-      return 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-    case 'elevation':
-      return 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Terrain_Base/MapServer/tile/{z}/{y}/{x}';
-    case 'climate':
-      return 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-    case 'hydrology':
-      return 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-    case 'barrier':
-      return 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-    default:
-      return 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-  }
-};
-
 interface EnvironmentLayersControlProps {
-  layers: EnvironmentLayer[];
+  layers: Layer[];
+  onToggleLayer?: (layerId: string) => void;
 }
 
-const EnvironmentLayersControl: React.FC<EnvironmentLayersControlProps> = ({ layers }) => {
+const EnvironmentLayersControl: React.FC<EnvironmentLayersControlProps> = ({ 
+  layers, 
+  onToggleLayer 
+}) => {
   if (layers.length === 0) {
     return null;
   }
@@ -36,13 +22,17 @@ const EnvironmentLayersControl: React.FC<EnvironmentLayersControlProps> = ({ lay
       {layers.map((layer) => (
         <Overlay 
           key={layer.id} 
-          name={layer.name} 
+          name={layer.name}
           checked={layer.visible}
         >
           <TileLayer
-            url={getTileUrl(layer)}
+            url={layer.url}
             opacity={0.7}
             attribution={`${layer.name} | ${layer.description}`}
+            eventHandlers={{
+              add: () => onToggleLayer?.(layer.id),
+              remove: () => onToggleLayer?.(layer.id),
+            }}
           />
         </Overlay>
       ))}

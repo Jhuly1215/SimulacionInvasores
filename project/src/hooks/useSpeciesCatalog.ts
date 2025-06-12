@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState, useMemo, useCallback } from 'react';
-import { BoundingBox, InvasiveSpecies } from '../types';
-import { fetchInvasiveSpecies, mockAPI } from '../api';
+import { Species, GenerateSpeciesRequest } from '../types';
+import { invasiveSpeciesAPI } from '../api/species';
 
 interface SpeciesFilters {
   type?: string;
@@ -10,29 +10,29 @@ interface SpeciesFilters {
   impactLevel?: string;
 }
 
-export const useSpeciesCatalog = (initialBbox?: BoundingBox) => {
-  const [filters, setFilters] = useState<SpeciesFilters>({});
-  const [currentBbox, setCurrentBbox] = useState<BoundingBox | undefined>(initialBbox);
+const buildGenerateSpeciesRequest = (regionId?: string): GenerateSpeciesRequest => ({
+  region_id: regionId ?? '',
+});
 
-  const { data: species, isLoading, error, refetch } = useQuery<InvasiveSpecies[]>({
-    queryKey: ['invasiveSpecies', currentBbox],
+export const useSpeciesCatalog = (regionId?: string) => {
+  const [filters, setFilters] = useState<SpeciesFilters>({});
+
+  const { data: species, isLoading, error, refetch } = useQuery<Species[]>({
+    queryKey: ['invasiveSpecies', regionId],
     queryFn: async () => {
-      if (!currentBbox) {
+      if (!buildGenerateSpeciesRequest(regionId)) {
         return [];
       }
 
-      // In development, use mock data
-      if (import.meta.env.DEV) {
-        return mockAPI.getInvasiveSpecies();
-      }
-      
-      return fetchInvasiveSpecies(currentBbox);
+      // Assuming the API returns an object with a 'species' array property
+      const result = await invasiveSpeciesAPI.generateSpeciesList(buildGenerateSpeciesRequest(regionId));
+      return Array.isArray(result) ? result : result.species_list ?? [];
     },
-    enabled: !!currentBbox,
+    enabled: !!buildGenerateSpeciesRequest(regionId),
   });
 
-  const updateRegion = useCallback((bbox: BoundingBox) => {
-    setCurrentBbox(bbox);
+  const updateRegion = useCallback((newRegionId?: string) => {
+    setFilters(prev => ({ ...prev }));
     refetch();
   }, [refetch]);
 
@@ -40,18 +40,14 @@ export const useSpeciesCatalog = (initialBbox?: BoundingBox) => {
     if (!species) return [];
 
     return species.filter(species => {
-      const typeMatch = !filters.type || species.type === filters.type;
+      const typeMatch = !filters.type || species.status === filters.type;
       
       const habitatMatch = !filters.habitat || 
-        species.habitat.some(h => h.toLowerCase().includes(filters.habitat!.toLowerCase()));
-      
-      const yearMatch = !filters.yearRange || 
-        (species.firstObservedYear >= filters.yearRange[0] && 
-         species.firstObservedYear <= filters.yearRange[1]);
+        species.primaryHabitat.some(h => h.toLowerCase().includes(filters.habitat!.toLowerCase()));
          
-      const impactMatch = !filters.impactLevel || species.impactLevel === filters.impactLevel;
+      const impactMatch = !filters.impactLevel || species.impactSummary === filters.impactLevel;
 
-      return typeMatch && habitatMatch && yearMatch && impactMatch;
+      return typeMatch && habitatMatch && impactMatch;
     });
   }, [species, filters]);
 
@@ -69,3 +65,4 @@ export const useSpeciesCatalog = (initialBbox?: BoundingBox) => {
     hasSpecies: !!species && species.length > 0,
   };
 };
+

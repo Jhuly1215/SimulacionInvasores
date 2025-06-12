@@ -2,7 +2,6 @@ import axios from 'axios';
 import {
   Region,
   CreateRegionRequest,
-  UpdateRegionRequest,
   ApiResponse,
 } from '../types';
 

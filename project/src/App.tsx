@@ -7,7 +7,7 @@ import { useSpeciesCatalog } from './hooks/useSpeciesCatalog';
 import { useEnvironmentLayers } from './hooks/useEnvironmentLayers';
 import { useSimulation } from './hooks/useSimulation';
 import { useLLM } from './hooks/useLLM';
-import { BoundingBox, GeoPolygon } from './types';
+import { BoundingBox, GeoPolygon, SimulationResult } from './types';
 
 function App() {
   const [selectedRegion, setSelectedRegion] = useState<{

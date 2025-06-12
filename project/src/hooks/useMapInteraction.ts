@@ -1,5 +1,7 @@
 import { useRef, useState, useCallback } from 'react';
-import L from 'leaflet';
+import * as L from 'leaflet';
+import 'leaflet-draw';
+
 import { BoundingBox, GeoPolygon } from '../types';
 
 interface UseMapInteractionProps {
@@ -47,8 +49,9 @@ export const useMapInteraction = ({ onRegionSelected }: UseMapInteractionProps =
       map.addControl(drawControlRef.current);
 
       // Handle draw events
-      map.on(L.Draw.Event.CREATED, (event: L.DrawEvent) => {
-        const layer = event.layer as L.Polygon;
+      map.on(L.Draw.Event.CREATED, (event: L.LeafletEvent) => {
+        const createdEvent = event as unknown as L.DrawEvents.Created;
+        const layer = createdEvent.layer as L.Polygon;
         drawnItemsRef.current?.addLayer(layer);
         
         // Extract polygon coordinates

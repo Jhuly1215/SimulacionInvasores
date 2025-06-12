@@ -1,4 +1,10 @@
 import axios from 'axios';
+import {
+  LayerRequest,
+  LayerUrls,
+  SingleLayerResponse,
+  WorldClimResponse,
+} from '../types';
 
 // API Configuration
 const API_URL = import.meta.env.VITE_API_URL || '/api';
@@ -18,34 +24,6 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
-
-// Types
-interface LayerRequest {
-  region_id: string;
-}
-
-interface LayerUrls {
-  copernicus_url: string;
-  bio1: string;
-  bio15: string;
-  bio12: string;
-  bio5: string;
-  bio6: string;
-  srtm_url: string;
-}
-
-interface SingleLayerResponse {
-  copernicus_url?: string;
-  srtm_url?: string;
-}
-
-interface WorldClimResponse {
-  bio1: string;
-  bio15: string;
-  bio12: string;
-  bio5: string;
-  bio6: string;
-}
 
 // Layers API Functions
 export const layersAPI = {

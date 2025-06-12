@@ -6,17 +6,17 @@ import SimulationPanel from './SimulationPanel';
 import LayersPanel from './LayersPanel';
 import ResultsPanel from './ResultsPanel';
 import { LLMAnalysisPanel } from './LLMAnalysisPanel';
-import { InvasiveSpecies, EnvironmentLayer, LLMAnalysis, SimulationResult } from '../../types';
+import { Species, Layer, LLMAnalysis, SimulationResult } from '../../types';
 
 interface SidebarProps {
-  species: InvasiveSpecies[];
+  species: Species[];
   speciesLoading: boolean;
   speciesError: Error | null;
   onSpeciesFilterChange: (filters: any) => void;
-  onSelectSpecies: (species: InvasiveSpecies) => void;
-  selectedSpecies: InvasiveSpecies | null;
+  onSelectSpecies: (species: Species) => void;
+  selectedSpecies: Species | null;
   
-  environmentLayers: EnvironmentLayer[];
+  environmentLayers: Layer[];
   layersLoading: boolean;
   onToggleLayer: (layerId: string) => void;
   
@@ -113,7 +113,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           <TabsContent value="simulation">
             <SimulationPanel
               selectedSpecies={selectedSpecies}
-              onUnselect={() => onSelectSpecies(null as unknown as InvasiveSpecies)}
+              onUnselect={() => onSelectSpecies(null as unknown as Species)}
               onUpdateParams={onUpdateSimulationParams}
               onStartSimulation={onRunSimulation}
               onCreateCustomSpecies={onCreateCustomSpecies}

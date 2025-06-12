@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { Play, Pause, RefreshCw, Plus, ChevronDown, ChevronUp } from 'lucide-react';
-import { InvasiveSpecies } from '../../types';
+import { Species } from '../../types';
 import { Loader } from '../UI/Loader';
 
 interface SimulationPanelProps {
-  selectedSpecies: InvasiveSpecies | null;
+  selectedSpecies: Species | null;
   onUnselect: () => void;
   onUpdateParams: (params: any) => void;
   onStartSimulation: () => void;
@@ -95,8 +95,8 @@ const SimulationPanel: React.FC<SimulationPanelProps> = ({
                 </div>
                 <p className="text-sm text-primary-700 italic mb-1">{selectedSpecies.scientificName}</p>
                 <div className="text-xs text-primary-600">
-                  Impact: <span className="font-medium">{selectedSpecies.impactLevel}</span> | 
-                  Type: <span className="font-medium">{selectedSpecies.type}</span>
+                  Impact: <span className="font-medium">{selectedSpecies.impactSummary}</span> | 
+                  Type: <span className="font-medium">{selectedSpecies.status}</span>
                 </div>
               </div>
             ) : (

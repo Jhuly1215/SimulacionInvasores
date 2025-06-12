@@ -3,9 +3,9 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'react-toastify';
 import { 
   GeoPolygon, 
-  InvasiveSpecies, 
+  Species, 
   SimulationParams,
-  SimulationResult
+  SimulationResponse
 } from '../types';
 import { runSimulation, mockAPI } from '../api';
 
@@ -17,7 +17,7 @@ export const useSimulation = () => {
     environmentLayers: [],
   });
   
-  const [selectedSpecies, setSelectedSpecies] = useState<InvasiveSpecies | null>(null);
+  const [selectedSpecies, setSelectedSpecies] = useState<Species | null>(null);
   const [currentTimeStep, setCurrentTimeStep] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
@@ -53,19 +53,7 @@ export const useSimulation = () => {
       ...(simulationParams.customSpecies ? { customSpecies: simulationParams.customSpecies } : {}),
     };
     
-    // In development, use mock data
-    if (import.meta.env.DEV) {
-      const result = mockAPI.simulateInvasion(params);
-      simulationMutation.mutate(params, {
-        onSuccess: () => {
-          setCurrentTimeStep(0);
-          simulationMutation.data = result;
-          toast.success('Simulation completed successfully!');
-        }
-      });
-    } else {
-      simulationMutation.mutate(params);
-    }
+
   }, [simulationParams, selectedSpecies, simulationMutation]);
 
   // Playback controls

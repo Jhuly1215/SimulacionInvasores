@@ -1,13 +1,13 @@
 import React from 'react';
-import { InvasiveSpecies } from '../../types';
+import { Species } from '../../types';
 import { PlayCircle } from 'lucide-react';
 import { Loader } from '../UI/Loader';
 
 interface SpeciesListProps {
-  species: InvasiveSpecies[];
+  species: Species[];
   isLoading: boolean;
   error: Error | null;
-  onSelectSpecies: (species: InvasiveSpecies) => void;
+  onSelectSpecies: (species: Species) => void;
   selectedSpeciesId?: string;
 }
 
@@ -51,27 +51,16 @@ const SpeciesList: React.FC<SpeciesListProps> = ({
             }`}
           >
             <div className="flex items-center p-3">
-              {sp.imageUrl ? (
-                <img 
-                  src={sp.imageUrl} 
-                  alt={sp.name} 
-                  className="w-16 h-16 object-cover rounded-md mr-3"
-                />
-              ) : (
-                <div className="w-16 h-16 bg-gray-100 rounded-md mr-3 flex items-center justify-center text-gray-400">
-                  No image
-                </div>
-              )}
               
               <div className="flex-1">
                 <h4 className="font-medium text-gray-900">{sp.name}</h4>
                 <p className="text-sm text-gray-500 italic">{sp.scientificName}</p>
                 <div className="flex mt-1 space-x-2">
                   <span className="text-xs px-2 py-0.5 bg-secondary-100 text-secondary-800 rounded-full">
-                    {sp.type}
+                    {sp.status}
                   </span>
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${getImpactBadgeColor(sp.impactLevel)}`}>
-                    {sp.impactLevel} impact
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${getImpactBadgeColor(sp.impactSummary)}`}>
+                    {sp.impactSummary} impact
                   </span>
                 </div>
               </div>
@@ -86,7 +75,7 @@ const SpeciesList: React.FC<SpeciesListProps> = ({
             </div>
             
             <div className="px-3 py-2 text-sm bg-gray-50 border-t border-gray-200">
-              <span className="font-medium">Habitat:</span> {sp.habitat.join(', ')}
+              <span className="font-medium">Habitat:</span> {sp.primaryHabitat.join(', ')}
             </div>
           </div>
         ))}
