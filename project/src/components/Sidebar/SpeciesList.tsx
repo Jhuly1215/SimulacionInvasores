@@ -6,6 +6,7 @@ import { useSpeciesList } from '../../hooks/useSpeciesList';
 
 interface SpeciesListProps {
   regionId?: string; // ID de la región para cargar especies automáticamente
+  lastCreatedRegionId?: string | null; // NUEVO: ID de la región recién creada
   species?: Species[]; // Especies manuales (opcional, para retrocompatibilidad)
   isLoading?: boolean; // Loading manual (opcional)
   error?: Error | null; // Error manual (opcional)
@@ -17,6 +18,7 @@ interface SpeciesListProps {
 
 const SpeciesList: React.FC<SpeciesListProps> = ({
   regionId,
+  lastCreatedRegionId, 
   species: manualSpecies,
   isLoading: manualLoading,
   error: manualError,
@@ -25,7 +27,7 @@ const SpeciesList: React.FC<SpeciesListProps> = ({
   showFilters = false,
   autoRefresh = true,
 }) => {
-  // Usar el hook solo si tenemos regionId
+  // Usar el hook con la nueva estructura de parámetros
   const {
     species: hookSpecies,
     loading: hookLoading,
@@ -35,27 +37,31 @@ const SpeciesList: React.FC<SpeciesListProps> = ({
     getSpeciesByImpact,
     getSpeciesCount,
     getImpactDistribution,
-  } = useSpeciesList(autoRefresh ? regionId : undefined);
+  } = useSpeciesList({
+    initialRegionId: autoRefresh ? regionId : undefined,
+    lastCreatedRegionId,
+  });
 
   // Estados para filtros
   const [statusFilter, setStatusFilter] = React.useState<string>('');
   const [impactFilter, setImpactFilter] = React.useState<Species['impactSummary'] | ''>('');
 
   // Determinar qué datos usar (hook vs manual)
-  const species = regionId ? hookSpecies : (manualSpecies || []);
-  const isLoading = regionId ? hookLoading : (manualLoading || false);
-  const error = regionId ? hookError : manualError;
+  const species = (regionId || lastCreatedRegionId) ? hookSpecies : (manualSpecies || []);
+  const isLoading = (regionId || lastCreatedRegionId) ? hookLoading : (manualLoading || false);
+  const error = (regionId || lastCreatedRegionId) ? hookError : manualError;
 
   // Refrescar manualmente si no es auto-refresh
   const handleRefresh = () => {
-    if (regionId) {
-      fetchSpeciesFromRegion(regionId);
+    const targetRegionId = lastCreatedRegionId || regionId;
+    if (targetRegionId) {
+      fetchSpeciesFromRegion(targetRegionId);
     }
   };
 
   // Aplicar filtros si están habilitados
   let filteredSpecies = species;
-  if (showFilters && regionId) {
+  if (showFilters && (regionId || lastCreatedRegionId)) {
     if (statusFilter) {
       filteredSpecies = getSpeciesByStatus(statusFilter);
     }
@@ -65,8 +71,8 @@ const SpeciesList: React.FC<SpeciesListProps> = ({
   }
 
   // Estadísticas
-  const totalSpecies = regionId ? getSpeciesCount() : species.length;
-  const impactStats = regionId ? getImpactDistribution() : getImpactDistributionManual(species);
+  const totalSpecies = (regionId || lastCreatedRegionId) ? getSpeciesCount() : species.length;
+  const impactStats = (regionId || lastCreatedRegionId) ? getImpactDistribution() : getImpactDistributionManual(species);
 
   if (isLoading) {
     return <Loader message="Loading species data..." />;
@@ -77,7 +83,7 @@ const SpeciesList: React.FC<SpeciesListProps> = ({
       <div className="p-4 text-error-500 bg-error-500/10 rounded-md">
         <div className="flex items-center justify-between">
           <span>Failed to load species data. Please try again.</span>
-          {regionId && (
+          {(regionId || lastCreatedRegionId) && (
             <button
               onClick={handleRefresh}
               className="flex items-center space-x-1 text-sm text-primary-600 hover:text-primary-800"
@@ -96,12 +102,12 @@ const SpeciesList: React.FC<SpeciesListProps> = ({
       <div className="p-4 text-secondary-600 bg-secondary-600/10 rounded-md">
         <div className="text-center">
           <p className="mb-2">
-            {regionId 
+            {(regionId || lastCreatedRegionId)
               ? "No species found for this region." 
               : "No species found. Please select a region or adjust your filters."
             }
           </p>
-          {regionId && (
+          {(regionId || lastCreatedRegionId) && (
             <button
               onClick={handleRefresh}
               className="flex items-center space-x-1 text-sm text-primary-600 hover:text-primary-800 mx-auto"
@@ -123,8 +129,13 @@ const SpeciesList: React.FC<SpeciesListProps> = ({
           <h3 className="text-lg font-semibold">
             Found {filteredSpecies.length} 
             {totalSpecies !== filteredSpecies.length && ` of ${totalSpecies}`} Species
+            {lastCreatedRegionId && (
+              <span className="ml-2 text-sm text-green-600 font-normal">
+                (from newly created region)
+              </span>
+            )}
           </h3>
-          {regionId && (
+          {(regionId || lastCreatedRegionId) && (
             <div className="flex items-center space-x-4 mt-1 text-sm text-gray-600">
               <span className="flex items-center space-x-1">
                 <div className="w-2 h-2 bg-red-500 rounded-full"></div>
@@ -146,7 +157,7 @@ const SpeciesList: React.FC<SpeciesListProps> = ({
           )}
         </div>
         
-        {regionId && (
+        {(regionId || lastCreatedRegionId) && (
           <button
             onClick={handleRefresh}
             className="flex items-center space-x-1 text-sm text-primary-600 hover:text-primary-800"
@@ -159,7 +170,7 @@ const SpeciesList: React.FC<SpeciesListProps> = ({
       </div>
 
       {/* Filtros */}
-      {showFilters && regionId && (
+      {showFilters && (regionId || lastCreatedRegionId) && (
         <div className="flex items-center space-x-4 p-3 bg-gray-50 rounded-lg">
           <div className="flex items-center space-x-2">
             <label className="text-sm font-medium text-gray-700">Status:</label>

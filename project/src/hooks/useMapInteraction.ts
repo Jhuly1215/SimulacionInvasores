@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback } from 'react';
+import { useRef, useState, useCallback, useEffect } from 'react';
 import * as L from 'leaflet';
 import 'leaflet-draw';
 import { regionAPI } from '../api/region';
@@ -125,14 +125,13 @@ export const useMapInteraction = ({ onRegionSelected, onError }: UseRegionMapPro
 
     setLastCreatedRegionId(regionId);
     setRegions(prev => [...prev, newRegion]);
-    console.log('State after update:', { lastCreatedRegionId, regions });
 
-    // ⚠️ Nueva funcionalidad: crear capas automáticamente
     const layerRequest = {
       region_id: regionId,
     };
 
     try {
+      console.log('Layers request:', layerRequest);
       await layersAPI.generateAllLayers(layerRequest);
       console.log('Layers generated successfully for region:', regionId);
     } catch (layerError) {
@@ -141,7 +140,9 @@ export const useMapInteraction = ({ onRegionSelected, onError }: UseRegionMapPro
     }
 
     clearDrawings();
+
     onRegionSelected?.(newRegion);
+
     return newRegion;
   } catch (error) {
     const err = error as Error;
@@ -175,6 +176,12 @@ export const useMapInteraction = ({ onRegionSelected, onError }: UseRegionMapPro
 
   // Check if region is ready to be created
   const canCreateRegion = selectedRegion !== null && !isCreating;
+
+  useEffect(() => {
+  if (lastCreatedRegionId) {
+    console.log('lastCreatedRegionId actualizado:', lastCreatedRegionId);
+  }
+}, [lastCreatedRegionId]);
 
   return {
     // State

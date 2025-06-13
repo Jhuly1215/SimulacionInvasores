@@ -5,8 +5,7 @@ import SpeciesFilters from './SpeciesFilters';
 import SimulationPanel from './SimulationPanel';
 import LayersPanel from './LayersPanel';
 import ResultsPanel from './ResultsPanel';
-import { LLMAnalysisPanel } from './LLMAnalysisPanel';
-import { Species, Layer, LLMAnalysis, SimulationResult } from '../../types';
+import { Species, Layer, SimulationResult } from '../../types';
 
 interface SidebarProps {
   species: Species[];
@@ -36,8 +35,6 @@ interface SidebarProps {
   onUpdateTimeStep: (step: number) => void;
   
   simulationResult: SimulationResult | null;
-  llmAnalysis: LLMAnalysis | null;
-  llmLoading: boolean;
   onRequestLLMAnalysis: () => void;
 }
 
@@ -69,9 +66,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   onUpdateTimeStep,
   
   simulationResult,
-  llmAnalysis,
-  llmLoading,
-  onRequestLLMAnalysis,
 }) => {
   const [activeTab, setActiveTab] = useState('species');
   
@@ -143,13 +137,6 @@ const Sidebar: React.FC<SidebarProps> = ({
             <ResultsPanel simulationResult={simulationResult} />
           </TabsContent>
           
-          <TabsContent value="analysis">
-            <LLMAnalysisPanel
-              analysis={llmAnalysis}
-              isLoading={llmLoading}
-              onRequestAnalysis={onRequestLLMAnalysis}
-            />
-          </TabsContent>
         </div>
       </Tabs>
     </div>

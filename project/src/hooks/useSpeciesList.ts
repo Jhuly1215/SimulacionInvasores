@@ -11,9 +11,6 @@ interface UseSpeciesListState {
 interface UseSpeciesListReturn extends UseSpeciesListState {
   // Core operations
   fetchSpeciesFromRegion: (regionId: string) => Promise<void>;
-  addSpeciesToRegion: (regionId: string, newSpecies: Species) => Promise<void>;
-  removeSpeciesFromRegion: (regionId: string, speciesId: string) => Promise<void>;
-  updateSpeciesInRegion: (regionId: string, updatedSpecies: Species) => Promise<void>;
   
   // Utility functions
   getSpeciesByStatus: (status: string) => Species[];
@@ -31,7 +28,15 @@ interface UseSpeciesListReturn extends UseSpeciesListState {
   getStatusDistribution: () => Record<string, number>;
 }
 
-export const useSpeciesList = (initialRegionId?: string): UseSpeciesListReturn => {
+interface UseSpeciesListProps {
+  initialRegionId?: string;
+  lastCreatedRegionId?: string | null; 
+}
+
+export const useSpeciesList = ({ 
+  initialRegionId, 
+  lastCreatedRegionId 
+}: UseSpeciesListProps = {}): UseSpeciesListReturn => {
   const [state, setState] = useState<UseSpeciesListState>({
     species: [],
     loading: false,
@@ -62,96 +67,6 @@ export const useSpeciesList = (initialRegionId?: string): UseSpeciesListReturn =
       const errorMessage = error instanceof Error ? error.message : 'Failed to fetch species';
       setError(errorMessage);
       console.error('Error fetching species from region:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [setLoading, setError, setSpecies]);
-
-  // Add a new species to a region
-  const addSpeciesToRegion = useCallback(async (regionId: string, newSpecies: Species) => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      // Get current region data
-      const region = await regionAPI.getRegion(regionId);
-      const currentSpecies = region.species_list || [];
-      
-      // Check if species already exists
-      const existingSpecies = currentSpecies.find(s => s.id === newSpecies.id);
-      if (existingSpecies) {
-        throw new Error('Species already exists in this region');
-      }
-      
-      // Add new species to the list
-      const updatedSpecies = [...currentSpecies, newSpecies];
-      
-      // Update region with new species list
-      await regionAPI.updateRegion(regionId, { species_list: updatedSpecies });
-      setSpecies(updatedSpecies);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to add species';
-      setError(errorMessage);
-      console.error('Error adding species to region:', error);
-      throw error;
-    } finally {
-      setLoading(false);
-    }
-  }, [setLoading, setError, setSpecies]);
-
-  // Remove a species from a region
-  const removeSpeciesFromRegion = useCallback(async (regionId: string, speciesId: string) => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      // Get current region data
-      const region = await regionAPI.getRegion(regionId);
-      const currentSpecies = region.species_list || [];
-      
-      // Remove species from the list
-      const updatedSpecies = currentSpecies.filter(s => s.id !== speciesId);
-      
-      // Update region with filtered species list
-      await regionAPI.updateRegion(regionId, { species_list: updatedSpecies });
-      setSpecies(updatedSpecies);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to remove species';
-      setError(errorMessage);
-      console.error('Error removing species from region:', error);
-      throw error;
-    } finally {
-      setLoading(false);
-    }
-  }, [setLoading, setError, setSpecies]);
-
-  // Update an existing species in a region
-  const updateSpeciesInRegion = useCallback(async (regionId: string, updatedSpecies: Species) => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      // Get current region data
-      const region = await regionAPI.getRegion(regionId);
-      const currentSpecies = region.species_list || [];
-      
-      // Find and update the species
-      const speciesIndex = currentSpecies.findIndex(s => s.id === updatedSpecies.id);
-      if (speciesIndex === -1) {
-        throw new Error('Species not found in this region');
-      }
-      
-      const newSpeciesList = [...currentSpecies];
-      newSpeciesList[speciesIndex] = updatedSpecies;
-      
-      // Update region with modified species list
-      await regionAPI.updateRegion(regionId, { species_list: newSpeciesList });
-      setSpecies(newSpeciesList);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to update species';
-      setError(errorMessage);
-      console.error('Error updating species in region:', error);
-      throw error;
     } finally {
       setLoading(false);
     }
@@ -233,12 +148,13 @@ export const useSpeciesList = (initialRegionId?: string): UseSpeciesListReturn =
     return distribution;
   }, [state.species]);
 
-  // Auto-fetch species if initial region ID is provided
+  // Auto-fetch species when a new region is created
   useEffect(() => {
-    if (initialRegionId) {
-      fetchSpeciesFromRegion(initialRegionId);
-    }
-  }, [initialRegionId, fetchSpeciesFromRegion]);
+  if (lastCreatedRegionId) {
+    console.log('Fetching species for newly created region:', lastCreatedRegionId);
+    fetchSpeciesFromRegion(lastCreatedRegionId);
+  }
+}, [lastCreatedRegionId, fetchSpeciesFromRegion]);
 
   return {
     // State
@@ -248,9 +164,6 @@ export const useSpeciesList = (initialRegionId?: string): UseSpeciesListReturn =
     
     // Core operations
     fetchSpeciesFromRegion,
-    addSpeciesToRegion,
-    removeSpeciesFromRegion,
-    updateSpeciesInRegion,
     
     // Utility functions
     getSpeciesByStatus,

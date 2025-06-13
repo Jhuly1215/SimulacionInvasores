@@ -1,141 +1,257 @@
-import React, { useState, useEffect } from 'react';
-import { ToastContainer } from 'react-toastify';
+import React, { useState, useCallback } from 'react';
+import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import MapContainer from './components/Map/MapContainer';
 import Sidebar from './components/Sidebar/Sidebar';
 import { useSpeciesList } from './hooks/useSpeciesList';
 import { useEnvironmentLayers } from './hooks/useEnvironmentLayers';
 import { useSimulation } from './hooks/useSimulation';
-import { BoundingBox, GeoPolygon, SimulationResult } from './types';
+import { useMapInteraction } from './hooks/useMapInteraction';
+import { Region, SimulationRequest } from './types';
 
 function App() {
-  const [selectedRegion, setSelectedRegion] = useState<{
-    bbox: BoundingBox;
-    polygon: GeoPolygon;
-    regionId: string;
-  } | null>(null);
+  
+  const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
 
-  // Initialize hooks
+  // Map interaction hook - handles drawing and region creation
+  const {
+    selectedRegion,
+    boundingBox,
+    isCreating,
+    regions,
+    canCreateRegion,
+    lastCreatedRegionId,
+    initializeDrawControl,
+    clearDrawings,
+    createRegion,
+    getRegion,
+  } = useMapInteraction({
+    onRegionSelected: (region: Region) => {
+      console.log('Region selected:', region);
+      setSelectedRegionId(lastCreatedRegionId);
+      toast.success(`Región "${region.name}" creada exitosamente`);
+    },
+    onError: (error: Error) => {
+      console.error('Map interaction error:', error);
+      toast.error(`Error: ${error.message}`);
+    },
+  });
+
+  // Species list hook - manages species data
   const {
     species,
-    isLoading: speciesLoading,
+    loading: speciesLoading,
     error: speciesError,
-    updateFilters: updateSpeciesFilters,
-    updateRegion: updateSpeciesRegion,
-  } = useSpeciesList();
+    fetchSpeciesFromRegion,
+    getSpeciesByStatus,
+    getSpeciesByImpact,
+    getSpeciesCount,
+    getImpactDistribution,
+    replaceAllSpecies,
+    clearSpecies,
+  } = useSpeciesList({
+    initialRegionId: selectedRegionId || undefined,
+    selectedRegionId,
+  });
 
+  // Environment layers hook - manages map layers
   const {
     layers: environmentLayers,
+    groupedLayers,
     isLoading: layersLoading,
+    error: layersError,
     toggleLayer,
     visibleLayers,
-  } = useEnvironmentLayers(selectedRegion?.regionId);
+    setVisibleLayers,
+    getLayerDescription,
+  } = useEnvironmentLayers(selectedRegionId || undefined);
 
+  // Simulation hook - manages species simulations
   const {
-    simulationParams,
-    setSimulationParams,
-    selectedSpecies,
-    setSelectedSpecies,
-    currentTimeStep,
-    setCurrentTimeStep,
-    isPlaying,
-    playbackSpeed,
-    setPlaybackSpeed,
-    simulationResult,
     isLoading: simulationLoading,
-    runSimulation,
-    startPlayback,
-    stopPlayback,
-    resetPlayback,
+    error: simulationError,
+    simulationData,
+    isSimulationRunning,
+    startSimulation,
+    getSimulationStatus,
+    clearError: clearSimulationError,
+    resetSimulation,
   } = useSimulation();
 
-  // Handle region selection on map
-  const handleRegionSelected = (bbox: BoundingBox, polygon: GeoPolygon) => {
-    const regionId = `region_${Math.random().toString(36).substring(2, 11)}`;
-    setSelectedRegion({ bbox, polygon, regionId });
-    
-    // Update species catalog with the new region
-    updateSpeciesRegion(bbox);
-    
-    // Update simulation params with the new region
-    setSimulationParams(prev => ({ ...prev, regionPolygon: polygon }));
-  };
-
-  // Handle selected species for simulation
-  const handleSpeciesSelected = (species: any) => {
-    setSelectedSpecies(species);
-  };
-
-  // Handle custom species creation
-  const handleCustomSpeciesCreated = (customSpecies: any) => {
-    setSelectedSpecies(null);
-    setSimulationParams(prev => ({ ...prev, customSpecies }));
-  };
-
-  // Request LLM analysis for the selected region
-  const handleRequestLLMAnalysis = () => {
-    if (selectedRegion) {
-      analyzeRegion(selectedRegion.bbox);
+  // Handle creating a new region
+  const handleCreateRegion = useCallback(async (name: string, speciesList: any[] = []) => {
+    if (!canCreateRegion) {
+      toast.error('No hay una región dibujada para crear');
+      return;
     }
-  };
 
-  // Get the current timestep from simulation results
-  const getCurrentTimeStepData = () => {
-    if (!simulationResult || currentTimeStep >= simulationResult.timeSteps.length) {
-      return null;
+    try {
+      await createRegion(name, speciesList);
+    } catch (error) {
+      console.error('Error creating region:', error);
     }
-    return simulationResult.timeSteps[currentTimeStep];
-  };
+  }, [canCreateRegion, createRegion]);
 
-  // Total number of simulation time steps
-  const totalTimeSteps = simulationResult ? simulationResult.timeSteps.length : 0;
+  // Handle region selection from existing regions
+  const handleSelectExistingRegion = useCallback(async (regionId: string) => {
+    try {
+      const region = await getRegion(regionId);
+      setSelectedRegionId(regionId);
+      toast.success(`Región "${region.name}" seleccionada`);
+    } catch (error) {
+      console.error('Error selecting region:', error);
+      toast.error('Error al seleccionar la región');
+    }
+  }, [getRegion]);
+
+  // Handle starting a simulation
+  const handleStartSimulation = useCallback(async (simulationRequest: SimulationRequest) => {
+    if (!selectedRegionId) {
+      toast.error('Selecciona una región antes de ejecutar la simulación');
+      return;
+    }
+
+    try {
+      // Ensure the simulation request includes the selected region
+      const requestWithRegion = {
+        ...simulationRequest,
+        region_id: selectedRegionId,
+      };
+
+      await startSimulation(requestWithRegion);
+      toast.success('Simulación iniciada exitosamente');
+    } catch (error) {
+      console.error('Error starting simulation:', error);
+      toast.error('Error al iniciar la simulación');
+    }
+  }, [selectedRegionId, startSimulation]);
+
+  // Handle species filtering
+  const handleSpeciesFilter = useCallback((filters: any) => {
+    // Implement filtering logic based on your requirements
+    console.log('Applying species filters:', filters);
+  }, []);
+
+  // Handle layer visibility changes
+  const handleToggleLayer = useCallback((layerId: string) => {
+    toggleLayer(layerId);
+  }, [toggleLayer]);
+
+  // Clear all selections and data
+  const handleClearAll = useCallback(() => {
+    clearDrawings();
+    clearSpecies();
+    resetSimulation();
+    setSelectedRegionId(null);
+    setVisibleLayers([]);
+    toast.info('Todos los datos han sido limpiados');
+  }, [clearDrawings, clearSpecies, resetSimulation, setVisibleLayers]);
+
+  // Handle errors
+  React.useEffect(() => {
+    if (speciesError) {
+      toast.error(`Error en especies: ${speciesError}`);
+    }
+    if (layersError) {
+      toast.error(`Error en capas: ${layersError}`);
+    }
+    if (simulationError) {
+      toast.error(`Error en simulación: ${simulationError}`);
+    }
+  }, [speciesError, layersError, simulationError]);
+
+  // LOG cuando cambia la región seleccionada
+  React.useEffect(() => {
+    console.log('🎯 Selected Region Changed:', selectedRegionId);
+    if (selectedRegionId) {
+      console.log('🔄 This should trigger layer loading for region:', selectedRegionId,);
+    }
+  }, [selectedRegionId]);
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-screen overflow-hidden bg-gray-100">
       {/* Sidebar */}
-      <div className="w-96 flex-shrink-0 overflow-hidden">
+      <div className="w-96 flex-shrink-0 overflow-hidden bg-white shadow-lg">
         <Sidebar
+          // Region management
+          selectedRegion={selectedRegion}
+          boundingBox={boundingBox}
+          canCreateRegion={canCreateRegion}
+          isCreatingRegion={isCreating}
+          regions={regions}
+          selectedRegionId={selectedRegionId}
+          onCreateRegion={handleCreateRegion}
+          onSelectRegion={handleSelectExistingRegion}
+          onClearDrawings={clearDrawings}
+
+          // Species data
           species={species}
           speciesLoading={speciesLoading}
-          speciesError={speciesError}
-          onSpeciesFilterChange={updateSpeciesFilters}
-          onSelectSpecies={handleSpeciesSelected}
-          selectedSpecies={selectedSpecies}
-          
+          speciesCount={getSpeciesCount()}
+          impactDistribution={getImpactDistribution()}
+          onSpeciesFilter={handleSpeciesFilter}
+          onFetchSpecies={fetchSpeciesFromRegion}
+          onReplaceSpecies={replaceAllSpecies}
+
+          // Environment layers
           environmentLayers={environmentLayers}
+          groupedLayers={groupedLayers}
           layersLoading={layersLoading}
-          onToggleLayer={toggleLayer}
-          
-          onUpdateSimulationParams={setSimulationParams}
-          onRunSimulation={runSimulation}
-          onCreateCustomSpecies={handleCustomSpeciesCreated}
-          
-          isSimulating={simulationLoading}
-          isPlaying={isPlaying}
-          onPlay={startPlayback}
-          onPause={stopPlayback}
-          onReset={resetPlayback}
-          playbackSpeed={playbackSpeed}
-          onUpdatePlaybackSpeed={setPlaybackSpeed}
-          currentTimeStep={currentTimeStep}
-          totalTimeSteps={totalTimeSteps}
-          onUpdateTimeStep={setCurrentTimeStep}
-          
-          simulationResult={simulationResult}
-          onRequestLLMAnalysis={handleRequestLLMAnalysis}
+          layersError={layersError}
+          visibleLayers={visibleLayers}
+          onToggleLayer={handleToggleLayer}
+          getLayerDescription={getLayerDescription}
+
+          // Simulation
+          simulationData={simulationData}
+          simulationLoading={simulationLoading}
+          simulationError={simulationError}
+          isSimulationRunning={isSimulationRunning}
+          onStartSimulation={handleStartSimulation}
+          onGetSimulationStatus={getSimulationStatus}
+          onResetSimulation={resetSimulation}
+          onClearSimulationError={clearSimulationError}
+
+          // Utility functions
+          onClearAll={handleClearAll}
         />
       </div>
-      
+
       {/* Main map area */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden relative">
         <MapContainer
-          onRegionSelected={handleRegionSelected}
-          currentTimeStep={getCurrentTimeStepData()}
+          // Map initialization
+          onMapReady={initializeDrawControl}
+          
+          // Region data
+          selectedRegion={selectedRegion}
+          boundingBox={boundingBox}
+          regions={regions}
+          
+          // Layers
           environmentLayers={environmentLayers.filter(layer => layer.visible)}
+          
+          // Simulation data
+          simulationData={simulationData}
+          
+          // Event handlers
+          onRegionClick={handleSelectExistingRegion}
         />
       </div>
-      
-      <ToastContainer position="bottom-right" />
+
+      {/* Toast notifications */}
+      <ToastContainer
+        position="bottom-right"
+        autoClose={5000}
+        hideProgressBar={false}
+        newestOnTop={false}
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="light"
+      />
     </div>
   );
 }
