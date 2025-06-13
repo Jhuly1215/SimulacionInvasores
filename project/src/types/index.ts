@@ -34,46 +34,36 @@ export interface SpeciesGenerationResult {
 }
 
 // Simulation related types
+export interface SimulationRequest {
+  region_id: string;
+  species_name: string;
+  initial_population: number;
+  growth_rate: number;
+  dispersal_kernel: number; 
+  timesteps: number; 
+}
+
 export interface SimulationParams {
-  regionPolygon: GeoPolygon;
-  speciesId?: string;
-  customSpecies?: {
-    name: string;
-    type: 'plant' | 'animal' | 'fungi' | 'other';
-    dispersalRate: number;
-    growthRate: number;
-    habitatPreference: string[];
-  };
-  environmentLayers: string[];
-  timeSteps: number;
-  kernelType: 'exponential' | 'gaussian' | 'fat-tailed';
-  stochastic: boolean;
+  commonName: string;
+  dispersalKernel: number;
+  impactFactor: number;
+  initial_population: number;
+  maxGrowthRate: number;
+  occurrenceCount: number;
+  scientificName: string;
+  timesteps: number;
 }
 
 export interface SimulationTimeStep {
-  timeStep: number;
-  cellData: {
-    x: number;
-    y: number;
-    population: number;
-  }[];
-  stats: {
-    totalArea: number;
-    invasionFrontSpeed: number;
-    ecosystemImpact: number;
-  };
+  id: number;
+  url: string;
 }
 
 export interface SimulationResult {
   simulationId: string;
-  species: Species | SimulationParams['customSpecies'];
+  species: SimulationParameters;
+  status: 'running' | 'completed' | 'failed';
   timeSteps: SimulationTimeStep[];
-  summary: {
-    maxPopulation: number;
-    finalArea: number;
-    averageSpeed: number;
-    totalImpact: number;
-  };
 }
 
 // Environment layer types

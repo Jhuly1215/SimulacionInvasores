@@ -105,26 +105,23 @@ function App() {
   }, [getRegion]);
 
   // Handle starting a simulation
-  const handleStartSimulation = useCallback(async (simulationRequest: SimulationRequest) => {
-    if (!selectedRegionId) {
-      toast.error('Selecciona una región antes de ejecutar la simulación');
+  const handleRunSimulation = useCallback(async (params: SimulationRequest) => {
+    if (!selectedRegion || !selectedRegionId) {
+      toast.error('Selecciona una región primero');
       return;
     }
-
-    try {
-      // Ensure the simulation request includes the selected region
-      const requestWithRegion = {
-        ...simulationRequest,
-        region_id: selectedRegionId,
-      };
-
-      await startSimulation(requestWithRegion);
-      toast.success('Simulación iniciada exitosamente');
-    } catch (error) {
-      console.error('Error starting simulation:', error);
-      toast.error('Error al iniciar la simulación');
-    }
-  }, [selectedRegionId, startSimulation]);
+    
+    const request: SimulationRequest = {
+      region_id: selectedRegionId,
+      species_name: params.species_name,
+      initial_population: params.initial_population,
+      growth_rate: params.growth_rate,
+      dispersal_kernel: params.dispersal_kernel,
+      timesteps: params.timesteps,
+    };
+    
+    await startSimulation(request);
+  }, [selectedRegion, selectedRegionId, startSimulation]);
 
   // Handle species filtering
   const handleSpeciesFilter = useCallback((filters: any) => {
@@ -204,13 +201,9 @@ function App() {
 
           // Simulation
           simulationData={simulationData}
-          simulationLoading={simulationLoading}
-          simulationError={simulationError}
-          isSimulationRunning={isSimulationRunning}
-          onStartSimulation={handleStartSimulation}
-          onGetSimulationStatus={getSimulationStatus}
+          isSimulating={simulationLoading || isSimulationRunning}
+          onRunSimulation={handleRunSimulation}
           onResetSimulation={resetSimulation}
-          onClearSimulationError={clearSimulationError}
 
           // Utility functions
           onClearAll={handleClearAll}

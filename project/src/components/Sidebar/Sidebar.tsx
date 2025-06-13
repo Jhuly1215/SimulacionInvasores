@@ -5,7 +5,7 @@ import SpeciesFilters from './SpeciesFilters';
 import SimulationPanel from './SimulationPanel';
 import LayersPanel from './LayersPanel';
 import ResultsPanel from './ResultsPanel';
-import { Species, Layer, SimulationResult } from '../../types';
+import { Species, Layer, SimulationResult, SimulationRequest } from '../../types';
 
 interface SidebarProps {
   species: Species[];
@@ -19,8 +19,11 @@ interface SidebarProps {
   layersLoading: boolean;
   onToggleLayer: (layerId: string) => void;
   
+  simulationData: any
+  selectedRegion: any
+  onResetSimulation: () => void
   onUpdateSimulationParams: (params: any) => void;
-  onRunSimulation: () => void;
+  onRunSimulation: (params: SimulationRequest) => Promise<void>; 
   onCreateCustomSpecies: (customSpecies: any) => void;
   
   isSimulating: boolean;
@@ -50,21 +53,12 @@ const Sidebar: React.FC<SidebarProps> = ({
   layersLoading,
   onToggleLayer,
   
-  onUpdateSimulationParams,
+  simulationData,
+  selectedRegion,
   onRunSimulation,
-  onCreateCustomSpecies,
+  onResetSimulation,
   
   isSimulating,
-  isPlaying,
-  onPlay,
-  onPause,
-  onReset,
-  playbackSpeed,
-  onUpdatePlaybackSpeed,
-  currentTimeStep,
-  totalTimeSteps,
-  onUpdateTimeStep,
-  
   simulationResult,
 }) => {
   const [activeTab, setActiveTab] = useState('species');
@@ -106,22 +100,12 @@ const Sidebar: React.FC<SidebarProps> = ({
           
           <TabsContent value="simulation">
             <SimulationPanel
-              selectedSpecies={selectedSpecies}
-              onUnselect={() => onSelectSpecies(null as unknown as Species)}
-              onUpdateParams={onUpdateSimulationParams}
-              onStartSimulation={onRunSimulation}
-              onCreateCustomSpecies={onCreateCustomSpecies}
-              isSimulating={isSimulating}
-              isPlaying={isPlaying}
-              onPlay={onPlay}
-              onPause={onPause}
-              onReset={onReset}
-              playbackSpeed={playbackSpeed}
-              onUpdatePlaybackSpeed={onUpdatePlaybackSpeed}
-              currentTimeStep={currentTimeStep}
-              totalTimeSteps={totalTimeSteps}
-              onUpdateTimeStep={onUpdateTimeStep}
-              hasSimulationResults={!!simulationResult}
+            selectedRegion={selectedRegion}
+            selectedSpecies={selectedSpecies}
+            onRunSimulation={onRunSimulation}
+            simulationData={simulationData}
+            isSimulating={isSimulating}
+            onReset={onResetSimulation}
             />
           </TabsContent>
           

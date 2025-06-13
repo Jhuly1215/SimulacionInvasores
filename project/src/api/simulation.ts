@@ -2,7 +2,7 @@ import axios from 'axios';
 import { SimulationRequest, SimulationResponse, SimulationStatusRequest } from '../types';
 
 // API Configuration
-const API_URL = import.meta.env.VITE_API_URL || '/api';
+const API_URL = import.meta.env.VITE_API_URL;
 
 const api = axios.create({
   baseURL: API_URL,
@@ -43,7 +43,9 @@ export const simulationAPI = {
   getSimulationStatus: async (statusData: SimulationStatusRequest): Promise<SimulationResponse> => {
     try {
       const { data } = await api.get<SimulationResponse>('/simulation/', {
-        data: statusData
+        params: {
+          region_id: statusData.region_id
+        }
       });
       return data;
     } catch (error) {

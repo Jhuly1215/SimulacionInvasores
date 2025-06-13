@@ -98,20 +98,6 @@ export const layersAPI = {
   },
 
   /**
-   * Get Copernicus layer URL for a region
-   * GET /layers/copernicus/{region_id}
-   */
-  getCopernicus: async (regionId: string): Promise<SingleLayerResponse> => {
-    try {
-      const { data } = await api.get<SingleLayerResponse>(`/layers/copernicus/${regionId}`);
-      return data;
-    } catch (error) {
-      console.error('Error fetching Copernicus layer:', error);
-      throw error;
-    }
-  },
-
-  /**
    * Generate WorldClim layers for a region
    * POST /layers/worldclim
    */
@@ -121,20 +107,6 @@ export const layersAPI = {
       return data;
     } catch (error) {
       console.error('Error generating WorldClim layers:', error);
-      throw error;
-    }
-  },
-
-  /**
-   * Get WorldClim layer URLs for a region
-   * GET /layers/worldclim/{region_id}
-   */
-  getWorldClim: async (regionId: string): Promise<WorldClimResponse> => {
-    try {
-      const { data } = await api.get<WorldClimResponse>(`/layers/worldclim/${regionId}`);
-      return data;
-    } catch (error) {
-      console.error('Error fetching WorldClim layers:', error);
       throw error;
     }
   },
