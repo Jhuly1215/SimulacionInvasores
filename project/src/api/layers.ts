@@ -138,6 +138,11 @@ export const layersAPI = {
       throw error;
     }
   },
+  // GET /region/{regionId}/layers
+  getLayers: async (regionId: string): Promise<LayerUrls> => {
+    const { data } = await api.get<LayerUrls>(`/layers-${regionId}`);
+    return data;
+  },
 };
 
 export default layersAPI;

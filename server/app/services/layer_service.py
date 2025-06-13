@@ -11,78 +11,75 @@ from firebase_admin import firestore
 async def create_layer_urls(region_id: str) -> dict:
     """
     1) Marca el documento layers/{region_id} como "running".
-    2) Llama a cada servicio para generar SRTM, Copernicus y WorldClim.
-       Cada servicio devuelve la URL pública de su capa.
-    3) Al terminar, guarda todas las URLs en Firestore y marca "completed".
-    4) Devuelve un dict con todas las URLs (srtm_url, copernicus_url, worldclim_bioX_url...).
+    2) Llama a cada servicio independientemente y captura errores por separado.
+    3) Al terminar, guarda todas las URLs y posibles errores en Firestore.
+    4) Marca "completed" o "completed_with_errors" y devuelve el resultado.
     """
-    # 1) Marcamos “running”
+    # 1) Marco “running”
     db.collection("layers").document(region_id).set({
         "status": "running",
         "started_at": firestore.SERVER_TIMESTAMP
     }, merge=True)
 
+    urls: dict = {}
+    errors: dict = {}
+
+    # 2.1) SRTM
     try:
-        # 2.1) Generar SRTM y obtener su URL
-        srtm_url = await generate_srtm_for_region(region_id)
-
-        # 2.2) Generar Copernicus y obtener su URL
-        copernicus_url = await generate_copernicus_for_region(region_id)
-
-        # 2.3) Generar las 5 capas de WorldClim y obtener sus URLs como dict
-        worldclim_urls = await generate_worldclim_layers_for_region(region_id)
-        # worldclim_urls tendrá:
-        # {
-        #   "worldclim_bio1_url": "...",
-        #   "worldclim_bio5_url": "...",
-        #   "worldclim_bio6_url": "...",
-        #   "worldclim_bio12_url": "...",
-        #   "worldclim_bio15_url": "..."
-        # }
-
-        # 3) Guardar todas las URLs en Firestore
-        combined = {
-            "srtm_url": srtm_url,
-            "copernicus_url": copernicus_url,
-            **worldclim_urls
-        }
-
-        # Actualizamos el documento layers/{region_id} con las URLs
-        db.collection("layers").document(region_id).update(combined)
-
-        # 3.1) Marcamos “completed” y guardamos generated_at
-        db.collection("layers").document(region_id).update({
-            "status": "completed",
-            "generated_at": firestore.SERVER_TIMESTAMP
-        })
-
-        # 4) Devolvemos el dict con todas las URLs
-        return combined
-
+        urls["srtm_url"] = await generate_srtm_for_region(region_id)
     except Exception as e:
-        # En caso de error, marcamos "failed" con mensaje y timestamp
-        db.collection("layers").document(region_id).update({
-            "status": "failed",
-            "error": str(e),
-            "failed_at": firestore.SERVER_TIMESTAMP 
-        })
-        # Volvemos a propagar la excepción para que FastAPI lo convierta en un 500
-        raise
+        errors["srtm_error"] = str(e)
+
+    # 2.2) Copernicus
+    try:
+        urls["copernicus_url"] = await generate_copernicus_for_region(region_id)
+    except Exception as e:
+        errors["copernicus_error"] = str(e)
+
+    # 2.3) WorldClim (varias capas)
+    try:
+        worldclim_urls = await generate_worldclim_layers_for_region(region_id)
+        # worldclim_urls es un dict con las 5 URLs:
+        # { "worldclim_bio1_url": "...", ..., "worldclim_bio15_url": "..." }
+        urls.update(worldclim_urls)
+    except Exception as e:
+        errors["worldclim_error"] = str(e)
+
+    # 3) Guardar en Firestore (URLs + errores si los hay)
+    update_data = {**urls}
+    if errors:
+        update_data["errors"] = errors
+
+    db.collection("layers").document(region_id).update(update_data)
+
+    # 3.1) Marcar estado final
+    final_status = "completed" if not errors else "completed_with_errors"
+    db.collection("layers").document(region_id).update({
+        "status": final_status,
+        "generated_at": firestore.SERVER_TIMESTAMP
+    })
+
+    # 4) Devolver tanto URLs como errores (si hubo)
+    return update_data
 
 
 async def get_layer_urls(region_id: str) -> dict:
     """
-    Lee el documento layers/{region_id} en Firestore.
-    Si no existe o su status != "completed", lanza ValueError.
-    Si está “completed”, devuelve el dict completo (incluye URLs y metadatos).
+    Lee layers/{region_id}. Si está en estado "completed" o
+    "completed_with_errors" devuelve el documento completo.
+    En otro caso lanza ValueError.
     """
-    layers_doc = db.collection("layers").document(region_id).get()
+    layers_ref = db.collection("layers").document(region_id)
+    layers_doc = layers_ref.get()
     if not layers_doc.exists:
         raise ValueError(f"No se encontró layers/{region_id} en Firestore.")
 
     data = layers_doc.to_dict()
-    if data.get("status") != "completed":
-        raise ValueError(f"Las capas para la región {region_id} aún no están listas. Estado actual: {data.get('status')}")
+    status = data.get("status")
+    if status not in ("completed", "completed_with_errors"):
+        raise ValueError(
+            f"Las capas para la región {region_id} aún no están listas. "
+            f"Estado actual: {status}"
+        )
 
     return data
-
