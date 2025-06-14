@@ -95,7 +95,6 @@ const SimulationPanel: React.FC<SimulationPanelProps> = ({
         timesteps: params.timeSteps,
       };
     } else if (showCustomSpecies && customSpecies.name) {
-      // Usar especie personalizada
       simulationRequest = {
         region_id: selectedRegion.id || selectedRegion.name || 'default',
         species_name: customSpecies.name,
@@ -108,6 +107,8 @@ const SimulationPanel: React.FC<SimulationPanelProps> = ({
       alert('Por favor selecciona una especie o crea una especie personalizada');
       return;
     }
+
+    console.log('SimulationRequest:', simulationRequest);
 
     try {
       await onRunSimulation(simulationRequest);

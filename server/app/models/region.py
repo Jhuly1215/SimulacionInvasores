@@ -58,3 +58,12 @@ class RegionResponse(BaseModel):
   )
   species_generated_at: datetime = Field(...,description="Fecha y hora en que se generó la lista de especies")
   species_list: List[SpeciesItem] = Field(...,description="Lista de especies invasoras con detalle enriquecido")
+
+class RegionListResponse(BaseModel):
+  """
+  Esquema de respuesta para GET /region:
+  - regions: lista de regiones con id, nombre y puntos
+  """
+  regions: List[RegionCreateResponse] = Field(
+    ..., description="Lista de regiones registradas"
+  )

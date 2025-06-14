@@ -16,6 +16,7 @@ export const useMapInteraction = ({ onRegionSelected, onError }: UseRegionMapPro
   const [isCreating, setIsCreating] = useState(false);
   const [regions, setRegions] = useState<Region[]>([]);
   const [lastCreatedRegionId, setLastCreatedRegionId] = useState<string | null>(null);
+  const [lastCreatedRegion, setLastCreatedRegion] = useState<Region | null>(null);
   
   const drawControlRef = useRef<L.Control.Draw | null>(null);
   const drawnItemsRef = useRef<L.FeatureGroup | null>(null);
@@ -117,14 +118,11 @@ export const useMapInteraction = ({ onRegionSelected, onError }: UseRegionMapPro
     const newRegion = await regionAPI.createRegion(regionData);
     console.log('API Response:', newRegion);
     const regionId = newRegion.id;
-    console.log('Extracted ID:', regionId);
+    setLastCreatedRegion(newRegion);
 
     if (!regionId) {
       throw new Error('Region created but no ID returned');
     }
-
-    setLastCreatedRegionId(regionId);
-    setRegions(prev => [...prev, newRegion]);
 
     const layerRequest = {
       region_id: regionId,
@@ -139,9 +137,8 @@ export const useMapInteraction = ({ onRegionSelected, onError }: UseRegionMapPro
       onError?.(layerError as Error); // Notificar error pero continuar
     }
 
+    setLastCreatedRegionId(regionId);
     clearDrawings();
-
-    onRegionSelected?.(newRegion);
 
     return newRegion;
   } catch (error) {
@@ -151,7 +148,7 @@ export const useMapInteraction = ({ onRegionSelected, onError }: UseRegionMapPro
   } finally {
     setIsCreating(false);
   }
-}, [selectedRegion, geoPolygonToPoints, onRegionSelected, onError]);
+}, [selectedRegion, geoPolygonToPoints, onError]);
 
   // Get region by ID
   const getRegion = useCallback(async (regionId: string) => {
@@ -178,10 +175,17 @@ export const useMapInteraction = ({ onRegionSelected, onError }: UseRegionMapPro
   const canCreateRegion = selectedRegion !== null && !isCreating;
 
   useEffect(() => {
-  if (lastCreatedRegionId) {
-    console.log('lastCreatedRegionId actualizado:', lastCreatedRegionId);
-  }
-}, [lastCreatedRegionId]);
+    if (lastCreatedRegionId) {
+      console.log('lastCreatedRegionId actualizado:', lastCreatedRegionId);
+    }
+  }, [lastCreatedRegionId]);
+
+  // En tu hook
+  useEffect(() => {
+    if (lastCreatedRegionId && lastCreatedRegion) {
+      onRegionSelected?.(lastCreatedRegion);
+    }
+  }, [lastCreatedRegionId, onRegionSelected]);
 
   return {
     // State

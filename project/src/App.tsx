@@ -11,7 +11,7 @@ import { Region, SimulationRequest } from './types';
 
 function App() {
   
-  const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
+  const [selectedRegionId, setSelectedRegionId] = useState<string | undefined>(undefined);
 
   // Map interaction hook - handles drawing and region creation
   const {
@@ -28,7 +28,8 @@ function App() {
   } = useMapInteraction({
     onRegionSelected: (region: Region) => {
       console.log('Region selected:', region);
-      setSelectedRegionId(lastCreatedRegionId);
+      console.log('Region id:', region.id);
+      setSelectedRegionId(region.id);
       toast.success(`Región "${region.name}" creada exitosamente`);
     },
     onError: (error: Error) => {
@@ -139,7 +140,7 @@ function App() {
     clearDrawings();
     clearSpecies();
     resetSimulation();
-    setSelectedRegionId(null);
+    setSelectedRegionId(undefined);
     setVisibleLayers([]);
     toast.info('Todos los datos han sido limpiados');
   }, [clearDrawings, clearSpecies, resetSimulation, setVisibleLayers]);
@@ -159,10 +160,7 @@ function App() {
 
   // LOG cuando cambia la región seleccionada
   React.useEffect(() => {
-    console.log('🎯 Selected Region Changed:', selectedRegionId);
-    if (selectedRegionId) {
-      console.log('🔄 This should trigger layer loading for region:', selectedRegionId,);
-    }
+      console.log('Saved region id:', selectedRegionId,);
   }, [selectedRegionId]);
 
   return (
