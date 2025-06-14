@@ -3,6 +3,7 @@ import {
   Region,
   CreateRegionRequest,
   ApiResponse,
+  RegionResponse,
 } from '../types';
 
 // API Configuration
@@ -82,24 +83,22 @@ export const regionAPI = {
       throw error;
     }
   },
-
   /**
-   * Delete a region by ID
-   * DELETE /region/{region_id}
-   * @param regionId - ID of the region to delete
-   * @returns Confirmation of deletion
-   * @throws Error if request fails
-   */
-  deleteRegion: async (regionId: string): Promise<{ success: boolean }> => {
+  * Get all regions
+  * GET /region/
+  * @returns An array of all regions
+  * @throws Error if request fails
+  */
+  getAllRegions: async (): Promise<Region[]> => {
     try {
-      const { data } = await api.delete<ApiResponse<{ success: boolean }>>(`/region/${regionId}`);
-      return data.data;
+      const response = await api.get<RegionResponse>('/region/');
+      console.log('response.data:', response.data);
+      return response.data.regions;
     } catch (error) {
-      console.error(`Error deleting region with ID ${regionId}:`, error);
+      console.error('Error fetching all regions:', error);
       throw error;
     }
-  },
-
+  }
 };
 
 export default regionAPI;

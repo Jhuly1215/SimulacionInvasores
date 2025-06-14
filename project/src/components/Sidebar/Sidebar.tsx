@@ -1,13 +1,20 @@
 import React, { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../UI/Tabs';
-import SpeciesList from './SpeciesList';
-import SpeciesFilters from './SpeciesFilters';
+import RegionsList from './RegionsList';
 import SimulationPanel from './SimulationPanel';
 import LayersPanel from './LayersPanel';
 import ResultsPanel from './ResultsPanel';
-import { Species, Layer, SimulationResult, SimulationRequest } from '../../types';
+import { Species, Layer, SimulationResult, SimulationRequest, Region } from '../../types';
 
 interface SidebarProps {
+  regions: Region[];
+  isLoading: boolean;
+  error: Error | null;
+  selectedRegionId: string | undefined;
+  onSelectRegion: (region: Region) => void;
+  onRefresh: () => void;
+  showFilters: boolean;
+
   species: Species[];
   speciesLoading: boolean;
   speciesError: Error | null;
@@ -40,24 +47,36 @@ interface SidebarProps {
   simulationResult: SimulationResult | null;
   onRequestLLMAnalysis: () => void;
 }
+  /*
+  // LOG cuando cambia 
+  React.useEffect(() => {
+      console.log('region Sidebar:', RegionsList);
+  }, [RegionsList]);*/
 
 const Sidebar: React.FC<SidebarProps> = ({
-  species,
-  speciesLoading,
-  speciesError,
-  onSpeciesFilterChange,
-  onSelectSpecies,
+  // region props
+  regions,
+  isLoading,
+  error,
+  selectedRegionId,
+  onSelectRegion,
+  onRefresh,
+  showFilters,
+
+  // species props
   selectedSpecies,
-  
+
+  //layers props
   environmentLayers,
   layersLoading,
   onToggleLayer,
-  
+
+  // simulation props
   simulationData,
   selectedRegion,
   onRunSimulation,
   onResetSimulation,
-  
+
   isSimulating,
   simulationResult,
 }) => {
@@ -79,7 +98,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
         <TabsList className="p-2 bg-white border-b">
-          <TabsTrigger value="species">Species</TabsTrigger>
+          <TabsTrigger value="species">Regions</TabsTrigger>
           <TabsTrigger value="simulation">Simulation</TabsTrigger>
           <TabsTrigger value="layers">Layers</TabsTrigger>
           <TabsTrigger value="results">Results</TabsTrigger>
@@ -87,16 +106,17 @@ const Sidebar: React.FC<SidebarProps> = ({
         </TabsList>
         
         <div className="flex-1 overflow-y-auto p-4">
-          <TabsContent value="species">
-            <SpeciesFilters onFilterChange={onSpeciesFilterChange} />
-            <SpeciesList
-              species={species}
-              isLoading={speciesLoading}
-              error={speciesError}
-              onSelectSpecies={onSelectSpecies}
-              selectedSpeciesId={selectedSpecies?.id}
-            />
-          </TabsContent>
+            <TabsContent value="species">
+              <RegionsList
+                regions={regions}
+                isLoading={isLoading}
+                error={error}
+                onSelectRegion={onSelectRegion}
+                selectedRegionId={selectedRegionId}
+                showFilters={showFilters}
+                onRefresh={onRefresh}
+              />
+            </TabsContent>
           
           <TabsContent value="simulation">
             <SimulationPanel

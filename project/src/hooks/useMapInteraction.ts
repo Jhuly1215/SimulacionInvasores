@@ -150,6 +150,8 @@ export const useMapInteraction = ({ onRegionSelected, onError }: UseRegionMapPro
   }
 }, [selectedRegion, geoPolygonToPoints, onError]);
 
+
+
   // Get region by ID
   const getRegion = useCallback(async (regionId: string) => {
     try {

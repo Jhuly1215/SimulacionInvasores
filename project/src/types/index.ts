@@ -111,12 +111,13 @@ export interface Point {
 }
 
 export interface Region {
-  id?: string;
+  id: string;
   name: string;
   points: Point[];
-  species_list: Species[];
-  createdAt?: string;
-  updatedAt?: string;
+}
+
+export interface RegionResponse {
+  regions: Region[];
 }
 
 export interface CreateRegionRequest {
