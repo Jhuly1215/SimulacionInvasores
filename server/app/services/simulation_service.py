@@ -21,6 +21,9 @@ from pathlib import Path
 from typing import Tuple, Dict
 from shapely.geometry import Polygon
 from app.utils.cog import to_cog
+from scipy.signal import convolve2d
+from utils.run_simulation import build_suitability_and_barrier, run_dynamic_simulation
+
 import logging
 logger = logging.getLogger(__name__)
 from scipy.signal import convolve2d
@@ -189,142 +192,94 @@ def build_suitability_and_barrier(
     polygon_gdf: gpd.GeoDataFrame,
     tmp_folder: str
 ) -> Tuple[np.ndarray, np.ndarray, dict]:
-    """
-    1) Recorta y remuestrea:
-       - Discrete-Classification-map (Copernicus LC100, banda única)
-       - Elevación (SRTM)
-       - Variables WorldClim
-    2) Calcula suitability como combinación:
-       - s_class  (peso 0.3)
-       - s_el     (peso 0.3)
-       - s_bioclim(peso 0.4)
-    3) barrier = 1.0 si agua (código 80), 0.7 si urbano (código 60), else 0.0
-    4) Devuelve (suitability, barrier, meta) para la simulación.
-    """
-
-    # --- 1a) Abrir referencia Copernicus para meta y dims ---
+    # — Abrir referencia para metadatos y dimensiones —
     with rasterio.open(copernicus_tif) as ref:
-        meta          = ref.meta.copy()
-        ref_h, ref_w  = ref.height, ref.width
-        ref_tf        = ref.transform
-        ref_crs       = ref.crs
+        meta     = ref.meta.copy()
+        H, W     = ref.height, ref.width
+        transform= ref.transform
+        crs      = ref.crs
 
-    def _mask_and_resample(path: str, band_index: int=1) -> np.ndarray:
-        """Recorta al polígono y remuestrea a la grilla de referencia."""
+    def _mask_and_resample(path: str) -> np.ndarray:
         with rasterio.open(path) as src:
-            geoms = [geom for geom in polygon_gdf.to_crs(src.crs).geometry]
-            # recorte (no usamos el resultado clippeado aquí)
-            _ , _ = mask(src, geoms, crop=True)
+            geoms = [g for g in polygon_gdf.to_crs(src.crs).geometry]
+            _, _ = mask(src, geoms, crop=True)
             arr = src.read(
-                band_index,
-                out_shape=(ref_h, ref_w),
+                1,
+                out_shape=(H, W),
                 resampling=Resampling.bilinear
             )
         return arr.astype(np.float32)
 
-    # --- 1b) Leer capas esenciales ---
-    # 1) Clasificación discreta (códigos 0–200)
-    class_arr = _mask_and_resample(copernicus_tif, band_index=1).astype(int)
+    # — Leer capas —
+    class_arr = _mask_and_resample(copernicus_tif).astype(int)
+    elev_arr  = _mask_and_resample(srtm_tif)
+    clim = {var: _mask_and_resample(path) for var, path in worldclim_tifs.items()}
 
-    # 2) Elevación SRTM
-    elev_arr = _mask_and_resample(srtm_tif, band_index=1)
-
-    # 3) WorldClim
-    clim_arrays = {
-        var: _mask_and_resample(path, band_index=1)
-        for var, path in worldclim_tifs.items()
-    }
-
-    # --- 2) Definir LUTs y rangos ---
-    # Pesos para discrete class (ajusta a tu criterio)
+    # — Parámetros y rangos —
     class_weights = {
         111: 0.9, 113: 0.8, 112: 0.85, 114: 0.75, 115: 0.8,
-        116: 0.5, 121: 0.7, 123: 0.65, 122: 0.7, 124: 0.6,
-        125: 0.6, 126: 0.5, 20: 0.4, 30: 0.4, 40: 0.3,
-        50: 0.0, 60: 0.2, 70: 0.1, 80: 0.0, 90: 0.3, 100: 0.2
+        116: 0.5, 121: 0.7, 123: 0.65,122: 0.7,124: 0.6,
+        125: 0.6,126: 0.5, 20: 0.4, 30: 0.4, 40: 0.3,
+         50: 0.0, 60: 0.2, 70: 0.1, 80: 0.0, 90: 0.3, 100: 0.2
     }
+    # defaults
+    s_class = np.full((H, W), 0.1, dtype=np.float32)
+    for code, w in class_weights.items():
+        s_class[class_arr == code] = w
 
-    elev_min, elev_max = 0, 3000
+    # s_el: pico en altitud media
+    elev_min, elev_max = 0.0, 3000.0
+    mid = 0.5 * (elev_min + elev_max)
+    half_range = 0.5 * (elev_max - elev_min)
+    s_el = 1.0 - np.abs((elev_arr - mid) / half_range)
+    s_el = np.clip(s_el, 0.0, 1.0)
+
+    # s_bioclim: normalizar cada biovar y combinar
     clim_ranges = {
         'bio1':  (-10.0, 45.0),
-        'bio5':  ( 0.0, 55.0),
+        'bio5':  (  0.0, 55.0),
         'bio6':  (-20.0, 30.0),
-        'bio12': ( 0.0, 3000.0),
-        'bio15': ( 0.0, 100.0),
+        'bio12': (  0.0,3000.0),
+        'bio15': (  0.0, 100.0),
     }
+    # Normalización vectorizada:
+    s_b = {}
+    for var, arr in clim.items():
+        vmin, vmax = clim_ranges[var]
+        s = (arr - vmin) / (vmax - vmin)
+        s_b[var] = np.clip(s, 0.0, 1.0)
+    # rango entre bio5 y bio6
+    max_range = clim_ranges['bio5'][1] - clim_ranges['bio6'][0]
+    s_range = np.clip((clim['bio5'] - clim['bio6']) / max_range, 0.0, 1.0)
 
-    def normalize(val, vmin, vmax):
-        return max(0.0, min(1.0, (val - vmin) / (vmax - vmin)))
+    s_bioclim = (
+        0.25 * s_b['bio1'] +
+        0.20 * s_b['bio5'] +
+        0.20 * s_b['bio6'] +
+        0.25 * s_b['bio12']+
+        0.05 * s_b['bio15']+
+        0.05 * s_range
+    )
 
-    # --- 3) Inicializar matrices ---
-    suitability = np.zeros((ref_h, ref_w), dtype=np.float32)
-    barrier     = np.zeros((ref_h, ref_w), dtype=np.float32)
+    # combinación final
+    suitability = 0.3 * s_class + 0.3 * s_el + 0.4 * s_bioclim
+    suitability = np.clip(suitability, 0.0, 1.0)
 
-    # --- 4) Bucle píxel a píxel ---
-    for i in range(ref_h):
-        for j in range(ref_w):
-            # 4.1) s_class
-            code     = class_arr[i, j]
-            s_class  = class_weights.get(code, 0.1)
+    # barrier: 1.0 donde clase==80, 0.7 donde clase==60, else 0
+    barrier = np.zeros((H, W), dtype=np.float32)
+    barrier[class_arr == 80] = 1.0
+    barrier[class_arr == 60] = 0.7
 
-            # 4.2) s_el (elevación normalizada con pico en altitud media)
-            e = elev_arr[i, j]
-            if e < elev_min or e > elev_max:
-                s_el = 0.0
-            else:
-                mid = (elev_min + elev_max) / 2
-                s_el = 1.0 - abs((e - mid) / ((elev_max - elev_min) / 2))
-
-            # 4.3) s_bioclim
-            b1  = clim_arrays['bio1'][i, j]
-            b5  = clim_arrays['bio5'][i, j]
-            b6  = clim_arrays['bio6'][i, j]
-            b12 = clim_arrays['bio12'][i, j]
-            b15 = clim_arrays['bio15'][i, j]
-
-            s_b1  = normalize(b1,  *clim_ranges['bio1'])
-            s_b5  = normalize(b5,  *clim_ranges['bio5'])
-            s_b6  = normalize(b6,  *clim_ranges['bio6'])
-            s_b12 = normalize(b12, *clim_ranges['bio12'])
-            s_b15 = normalize(b15, *clim_ranges['bio15'])
-
-            temp_range = b5 - b6
-            max_range  = clim_ranges['bio5'][1] - clim_ranges['bio6'][0]
-            s_range    = max(0.0, min(1.0, temp_range / max_range))
-
-            # Ponderación interna de bioclima
-            s_bioclim = (
-                0.25 * s_b1 +
-                0.20 * s_b5 +
-                0.20 * s_b6 +
-                0.25 * s_b12 +
-                0.05 * s_b15 +
-                0.05 * s_range
-            )
-
-            # 4.4) combinar sub-scores (pesos suman 1.0)
-            s_tot = 0.3 * s_class + 0.3 * s_el + 0.4 * s_bioclim
-            suitability[i, j] = min(1.0, max(0.0, s_tot))
-
-            # 4.5) barrier según clase: agua=80 →1.0, urbano=60 →0.7
-            if code == 80:
-                barrier[i, j] = 1.0
-            elif code == 60:
-                barrier[i, j] = 0.7
-            else:
-                barrier[i, j] = 0.0
-
-    # --- 5) Construir meta para re-escritura GeoTIFF ---
+    # actualizar meta y devolver
     meta.update({
-        "height":    ref_h,
-        "width":     ref_w,
-        "transform": ref_tf,
-        "crs":       ref_crs,
-        "dtype":     "float32"
+        "height":    H,
+        "width":     W,
+        "transform": transform,
+        "crs":       crs,
+        "dtype":     "float32",
     })
-
     return suitability, barrier, meta
-# -------------------------------------------------------------------
+
 # 4) Loop temporal de simulación
 # -------------------------------------------------------------------
 def run_dynamic_simulation(
@@ -337,115 +292,91 @@ def run_dynamic_simulation(
     tmp_folder: str
 ) -> List[str]:
     """
-    Ejecuta la simulación paso a paso y escribe un GeoTIFF por cada t.  
-    Parámetros:
-      - region_id: identifica la simulación / carpeta destino.
-      - species_params: {"scientificName": ..., "maxGrowthRate": r, "dispersalKernel": σ, ...}
-      - suitability[i,j]: matriz [0,1].
-      - barrier[i,j]: matriz [0,1].
-      - meta: meta común de rasterización (transform, crs, height, width).
-    Retorna la lista de paths a los GeoTIFF generados (uno por t).
-    """
-    # 1) Inicializamos estado: D[i,j] y Infested[i,j]
-    height = meta["height"]
-    width = meta["width"]
-    D = np.zeros((height, width), dtype=np.float32)
-    Infested = np.zeros((height, width), dtype=np.uint8)
+    Simulación vectorizada:
+      - initial_population inicia D
+      - crecimiento logístico con escala temporal dt_years
+      - dispersión con convolución
+      - umbral dinámico basado en initial_population
 
-    # 1a) Estado inicial: colocamos infestación en el centroid del polígono
+    Cada timestep representa dt_years años, así que con T timesteps
+    simulamos un total de T * dt_years años.
+    """
+    height, width = meta["height"], meta["width"]
+    
+    # Parámetros
+    r         = species_params.get("maxGrowthRate", 0.1)    # tasa anual
+    sigma_m   = species_params.get("dispersalKernel", 500)
+    init_pop  = species_params.get("initial_population", 0.01)
+    T         = species_params.get("timesteps", 20)
+    dt        = species_params.get("dt_years", 1.0)         # años por paso
+    threshold = init_pop * 0.5
+
+    # Coordenadas del centro
     centroid = polygon_gdf.geometry[0].centroid
     x_cent, y_cent = centroid.x, centroid.y
-
-    # Convertir coordenadas a índices de fila/columna:
-    #   row = int((origin_y - y) / pixel_height)
-    #   col = int((x - origin_x) / pixel_width)
-    transform = meta["transform"]
-    origin_x = transform.c
-    pixel_x  = transform.a
-    origin_y = transform.f
-    pixel_y  = transform.e
-
-    col0 = int((x_cent - origin_x) / pixel_x)
-    row0 = int((origin_y - y_cent) / abs(pixel_y))
-    # Validamos que esté dentro del rango
+    tf = meta["transform"]
+    col0 = int((x_cent - tf.c) / tf.a)
+    row0 = int((tf.f - y_cent) / abs(tf.e))
+    
+    # Inicialización
+    D       = np.zeros((height, width), dtype=np.float32)
+    Infested= np.zeros_like(D, dtype=np.uint8)
     if 0 <= row0 < height and 0 <= col0 < width:
+        D[row0, col0] = init_pop
         Infested[row0, col0] = 1
-        D[row0, col0] = 0.01  # densidad inicial pequeña
 
-    # 2) Parámetros de la especie
-    r = species_params.get("maxGrowthRate", 0.1)        # tasa de crecimiento
-    sigma = species_params.get("dispersalKernel", 500)  # metros (se usa en kernel)
+    # Kernel de dispersión
+    pix_size_m = 100
+    sigma_px   = sigma_m / pix_size_m
+    rad        = int(3 * sigma_px)
+    yv, xv     = np.ogrid[-rad:rad+1, -rad:rad+1]
+    kernel     = np.exp(-(xv**2 + yv**2)/(2*sigma_px**2))
+    kernel    /= kernel.sum()
 
-    # 2a) Construir un “kernel” gaussiano normalizado basado en sigma
-    # Supongamos pix_size en metros (aprox) → si tu pixel es 100m, sigma en pixeles = sigma / 100
-    pix_size_m = 100  # asumir 100 m/píxel si Copernicus lo define así
-    sigma_pix = sigma / pix_size_m
-
-    # Creamos un kernel cuadrado de tamaño p. ej. 5*sigma_pix de lado
-    kernel_radius = int(3 * sigma_pix)  # 3σ
-    size = 2 * kernel_radius + 1
-    yv, xv = np.meshgrid(np.arange(size), np.arange(size))
-    y0 = x0 = kernel_radius
-    dist2 = (xv - x0)**2 + (yv - y0)**2
-    kernel = np.exp(-dist2 / (2 * sigma_pix**2))
-    kernel = kernel / np.sum(kernel)  # normalizamos a suma 1
-
-    # 3) Carpeta donde guardaremos cada GeoTIFF del paso t
+    # Carpeta de salida
     sim_folder = os.path.join(tmp_folder, "simulation", region_id)
     os.makedirs(sim_folder, exist_ok=True)
+    output_paths = []
 
-    timestemps_files = []
-
-    # 4) Correr la simulación T pasos
-    T = species_params.get("timesteps", 20)  # número de iteraciones
     for t in range(T):
-        new_D = D.copy()
+        # --- Crecimiento logístico escalado por dt_years ---
+        # D[t+1] = D + r * D * (1 - D/K) * dt
+        K      = suitability
+        growth = r * D * (1 - D/(K + 1e-6)) * dt
+        D2     = D + growth
 
-        # 4a) Crecimiento local (modelo logístico)
-        # D[t+1] = D[t] + r * D[t] * (1 - D[t]/K), con K = suitability[i,j] * C_max
-        C_max = 1.0  # densidad de saturación; puedes permitirlo como parámetro
-        K = suitability * C_max
-        growth = r * D * (1 - (D / (K + 1e-6)))  # +1e-6 para evitar div0
-        new_D = np.clip(new_D + growth, 0.0, None)
+        # --- Dispersión via convolución 2D ---
+        dispersed = convolve2d(D2, kernel, mode="same", boundary="fill", fillvalue=0)
+        D_next    = D2 + dispersed * suitability * (1 - barrier)
 
-        # 4b) Dispersión: convolucionamos new_D con el kernel y aplicamos barriers
-        from scipy.signal import convolve2d
-        dispersed = convolve2d(new_D, kernel, mode="same", boundary="fill", fillvalue=0)
-        # Restamos densidad que salió (asumimos proporcional), esto es solo un ejemplo
-        immigracion = dispersed * suitability * (1 - barrier)  # reduce donde hay barreras
-        new_D = np.clip(new_D + immigracion, 0.0, None)
+        # --- Infested (umbral dinámico) ---
+        Infested = (D_next > threshold).astype(np.uint8)
+        D = D_next  # preparar siguiente paso
 
-        # 4c) Actualizamos Infested: si D[i,j] > umbral, marcamos 1
-        threshold = 0.01
-        Infested = (new_D > threshold).astype(np.uint8)
-
-        # 4d) Preparamos D para el siguiente paso
-        D = new_D
-
-        # 4e) Guardar el mapa de Infested como GeoTIFF
+        # --- Guardar GeoTIFF ---
         out_meta = {
-            "driver": "GTiff",
-            "height": height,
-            "width": width,
-            "count": 1,
-            "dtype": rasterio.uint8,
-            "crs": meta["crs"],
+            "driver":    "GTiff",
+            "height":    height,
+            "width":     width,
+            "count":     1,
+            "dtype":     rasterio.uint8,
+            "crs":       meta["crs"],
             "transform": meta["transform"]
         }
-        tif_path = os.path.join(sim_folder, f"infested_t{t:03d}.tif")
-        with rasterio.open(tif_path, "w", **out_meta) as dst:
+        tif = os.path.join(sim_folder, f"infested_t{t:03d}.tif")
+        with rasterio.open(tif, "w", **out_meta) as dst:
             dst.write(Infested, 1)
-        # ───── Convertir a Cloud-Optimized GeoTIFF ─────
-        try:
-            cog_path = to_cog(Path(tif_path))
-            os.remove(tif_path)                 # opcional: borrar TIFF clásico
-            timestemps_files.append(str(cog_path))
-        except Exception as e:
-            logger.warning(f"[COG] paso {t}: conversión fallida ({e}); usando TIFF normal.")
-            timestemps_files.append(tif_path)
 
-    # 5) Devolver la lista de paths generados
-    return timestemps_files
+        # → convertir a COG
+        try:
+            cog = to_cog(Path(tif))
+            os.remove(tif)
+            output_paths.append(str(cog))
+        except Exception:
+            output_paths.append(tif)
+
+    logger.debug(f"Simulación: {T} pasos × {dt} años = {T*dt} años totales")
+    return output_paths
 
 # -------------------------------------------------------------------
 # 5) Lógica Orquestadora: pipeline para toda la simulación
