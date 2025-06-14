@@ -1,7 +1,7 @@
 # server/app/api/simulation.py
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Dict, List
 from app.services.simulation_service import generate_simulation_for_region
 from app.core.firebase import db
@@ -13,11 +13,22 @@ router = APIRouter()
 
 class SimulationRequest(BaseModel):
     region_id: str
-    species_name: str          # nombre común o científico
-    initial_population: float  # 0.0 – 1.0
-    growth_rate: float         # r
-    dispersal_kernel: float    # sigma (m)
+    # mapear species_name → commonName (camelCase interno)
+    species_name: str           = Field(..., alias="species_name")
+    initial_population: float
+    # mapear growth_rate → maxGrowthRate
+    growth_rate: float      = Field(..., alias="growth_rate")
+    # mapear dispersal_kernel → dispersalKernel
+    dispersal_kernel: float    = Field(..., alias="dispersal_kernel")
     timesteps: int
+    dt_years: float            = Field(1.0, alias="dt_years")
+    mobility: str
+    jump_prob: float
+    max_dispersal_km: float
+    altitude_tolerance: List[float]
+    habitat_pref: Dict[str, float]
+    climate_pref: Dict[str, float]
+    climate_tolerance: Dict[str, List[float]]
 
 class SimulationResponse(BaseModel):
     status: str

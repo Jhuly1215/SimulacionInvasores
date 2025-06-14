@@ -4,7 +4,7 @@ import { MapContainer, TileLayer } from 'react-leaflet';
 import GeoTiffLayer                from '../components/GeoTiffLayer';
 
 const STORAGE_PATH =
-  'https://storage.googleapis.com/invasores-72d3c.firebasestorage.app/simulation/4qR2izcDcxqPByhNbkSr/infested_t009_cog.tif';
+  'https://storage.googleapis.com/invasores-72d3c.firebasestorage.app/simulation/EoYrEYoJal9rUw9tDK1S/infested_t012_cog.tif';
 
 const GeoTiffPage: React.FC = () => (
   <div className="h-screen w-full">

@@ -31,6 +31,10 @@ logging.basicConfig(
 logging.getLogger().setLevel(logging.DEBUG)
 logging.getLogger("uvicorn.error").setLevel(logging.DEBUG)
 logging.getLogger("uvicorn.access").setLevel(logging.INFO)
+logging.getLogger("rasterio").setLevel(logging.WARNING)
+logging.getLogger("rasterio.env").setLevel(logging.WARNING)
+logging.getLogger("rasterio._base").setLevel(logging.WARNING)
+logging.getLogger("urllib3.connectionpool").disabled = True
 
 # Inicialización de la app con OpenAPI/Swagger
 app = FastAPI(
