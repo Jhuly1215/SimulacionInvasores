@@ -9,6 +9,7 @@ import { useSimulation } from './hooks/useSimulation';
 import { useMapInteraction } from './hooks/useMapInteraction';
 import { useRegionList } from './hooks/useRegionList';
 import { Region, SimulationRequest } from './types';
+
 function App() {
   
   const [AppRegion, setAppRegion] = useState<string | undefined>(undefined);
@@ -104,17 +105,12 @@ function App() {
     }
   }, [canCreateRegion, createRegion]);
 
-  // Handle region selection from existing regions
-  const handleSelectExistingRegion = useCallback(async (regionId: string) => {
-    try {
-      const region = await getRegion(regionId);
-      setAppRegion(regionId);
-      toast.success(`Región "${region.name}" seleccionada`);
-    } catch (error) {
-      console.error('Error selecting region:', error);
-      toast.error('Error al seleccionar la región');
-    }
-  }, [getRegion]);
+  // Función simplificada para manejar selección de región
+  const handleSelectRegion = useCallback((regionId: string) => {
+    setAppRegion(regionId);
+    console.log('Region selected from list:', regionId);
+    // Solo guarda el ID, no hace nada más
+  }, []);
 
   // Handle starting a simulation
   const handleRunSimulation = useCallback(async (params: SimulationRequest) => {
@@ -169,9 +165,14 @@ function App() {
     }
   }, [speciesError, layersError, simulationError]);
 
-  // LOG cuando cambia 
+  // LOG cuando cambia AppRegion
   React.useEffect(() => {
-      console.log('region App:',  regionsList);
+      console.log('AppRegion changed to:', AppRegion);
+  }, [AppRegion]);
+
+  // LOG cuando cambia regionsList
+  React.useEffect(() => {
+      console.log('Regions list:', regionsList);
   }, [regionsList]);
 
   return (
@@ -187,14 +188,14 @@ function App() {
           regions={regionsList}
           AppRegion={AppRegion}
           onCreateRegion={handleCreateRegion}
-          onSelectRegion={handleSelectExistingRegion}
+          onSelectRegion={handleSelectRegion} // Función simplificada
           onClearDrawings={clearDrawings}
 
           //region list
           isLoading={isLoading}
           error={error}
-          selectedRegionId={selectedRegionList?.id}
-          onSelectRegionList={onSelectRegionList}
+          selectedRegionId={AppRegion} // Usar AppRegion directamente
+          onSelectRegionList={handleSelectRegion} // Misma función simplificada
           onRefresh={onRefresh}
           clearSelection={clearSelection}
 
@@ -235,8 +236,7 @@ function App() {
           // Simulation data
           simulationData={simulationData}
           
-          // Event handlers
-          onRegionClick={handleSelectExistingRegion}
+          // Event handlers - removido onRegionClick para simplificar
         />
       </div>
 

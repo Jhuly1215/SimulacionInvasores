@@ -33,37 +33,57 @@ export interface SpeciesGenerationResult {
   error?: string;
 }
 
-// Simulation related types
+// Tipos auxiliares
+
+export type HabitatPreference = {
+  forest_closed: number;
+  forest_open: number;
+  shrubs: number;
+  herbaceous: number;
+  cropland: number;
+  urban: number;
+  snow_ice: number;
+  water: number;
+  wetland: number;
+  moss_lichen: number;
+};
+
+export type ClimatePreference = {
+  bio1: number;
+  bio5: number;
+  bio6: number;
+  bio12: number;
+  bio15: number;
+};
+
+export type ClimateTolerance = {
+  bio1: [number, number];
+  bio5: [number, number];
+  bio6: [number, number];
+  bio12: [number, number];
+  bio15: [number, number];
+};
+
+// Solicitud de simulación completa
 export interface SimulationRequest {
   region_id: string;
   species_name: string;
   initial_population: number;
   growth_rate: number;
-  dispersal_kernel: number; 
-  timesteps: number; 
-}
-
-export interface SimulationParams {
-  commonName: string;
-  dispersalKernel: number;
-  impactFactor: number;
-  initial_population: number;
-  maxGrowthRate: number;
-  occurrenceCount: number;
-  scientificName: string;
+  dispersal_kernel: number;
   timesteps: number;
+  dt_years: number;
+  mobility: 'aerial' | 'terrestrial' | 'aquatic';
+  jump_prob: number;
+  max_dispersal_km: number;
+  altitude_tolerance: [number, number];
+  habitat_pref: HabitatPreference;
+  climate_pref: ClimatePreference;
+  climate_tolerance: ClimateTolerance;
 }
 
-export interface SimulationTimeStep {
-  id: number;
-  url: string;
-}
-
+// resultados de la simulación
 export interface SimulationResult {
-  simulationId: string;
-  species: SimulationParameters;
-  status: 'running' | 'completed' | 'failed';
-  timeSteps: SimulationTimeStep[];
 }
 
 // Environment layer types

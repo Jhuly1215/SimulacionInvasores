@@ -22,7 +22,7 @@ from typing import Tuple, Dict
 from shapely.geometry import Polygon
 from app.utils.cog import to_cog
 from scipy.signal import convolve2d
-from utils.run_simulation import build_suitability_and_barrier, run_dynamic_simulation
+from app.utils.run_simulation import build_suitability_and_barrier, run_dynamic_simulation
 
 import logging
 logger = logging.getLogger(__name__)

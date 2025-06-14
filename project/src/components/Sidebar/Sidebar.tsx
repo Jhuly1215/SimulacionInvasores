@@ -11,47 +11,42 @@ interface SidebarProps {
   isLoading: boolean;
   error: Error | null;
   selectedRegionId: string | undefined;
-  onSelectRegion: (region: Region) => void;
+  onSelectRegion: (regionId: string) => void; // Cambiado para recibir solo el ID
   onRefresh: () => void;
-  showFilters: boolean;
+  showFilters?: boolean;
 
-  species: Species[];
-  speciesLoading: boolean;
-  speciesError: Error | null;
-  onSpeciesFilterChange: (filters: any) => void;
-  onSelectSpecies: (species: Species) => void;
-  selectedSpecies: Species | null;
+  species?: Species[];
+  speciesLoading?: boolean;
+  speciesError?: Error | null;
+  onSpeciesFilterChange?: (filters: any) => void;
+  onSelectSpecies?: (species: Species) => void;
+  selectedSpecies?: Species | null;
   
   environmentLayers: Layer[];
   layersLoading: boolean;
   onToggleLayer: (layerId: string) => void;
   
-  simulationData: any
-  selectedRegion: any
-  onResetSimulation: () => void
-  onUpdateSimulationParams: (params: any) => void;
+  simulationData: any;
+  selectedRegion: any;
+  onResetSimulation: () => void;
+  onUpdateSimulationParams?: (params: any) => void;
   onRunSimulation: (params: SimulationRequest) => Promise<void>; 
-  onCreateCustomSpecies: (customSpecies: any) => void;
+  onCreateCustomSpecies?: (customSpecies: any) => void;
   
   isSimulating: boolean;
-  isPlaying: boolean;
-  onPlay: () => void;
-  onPause: () => void;
-  onReset: () => void;
-  playbackSpeed: number;
-  onUpdatePlaybackSpeed: (speed: number) => void;
-  currentTimeStep: number;
-  totalTimeSteps: number;
-  onUpdateTimeStep: (step: number) => void;
+  isPlaying?: boolean;
+  onPlay?: () => void;
+  onPause?: () => void;
+  onReset?: () => void;
+  playbackSpeed?: number;
+  onUpdatePlaybackSpeed?: (speed: number) => void;
+  currentTimeStep?: number;
+  totalTimeSteps?: number;
+  onUpdateTimeStep?: (step: number) => void;
   
-  simulationResult: SimulationResult | null;
-  onRequestLLMAnalysis: () => void;
+  simulationResult?: SimulationResult | null;
+  onRequestLLMAnalysis?: () => void;
 }
-  /*
-  // LOG cuando cambia 
-  React.useEffect(() => {
-      console.log('region Sidebar:', RegionsList);
-  }, [RegionsList]);*/
 
 const Sidebar: React.FC<SidebarProps> = ({
   // region props
@@ -61,7 +56,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   selectedRegionId,
   onSelectRegion,
   onRefresh,
-  showFilters,
+  showFilters = true,
 
   // species props
   selectedSpecies,
@@ -94,6 +89,12 @@ const Sidebar: React.FC<SidebarProps> = ({
       <div className="p-4 bg-primary-600 text-white">
         <h2 className="text-xl font-bold">Invasive Species Simulator</h2>
         <p className="text-sm opacity-75">Visualize and predict biological invasions</p>
+        {/* Mostrar la región seleccionada actual */}
+        {selectedRegionId && (
+          <p className="text-xs mt-1 bg-white/20 px-2 py-1 rounded">
+            Selected Region: {selectedRegionId}
+          </p>
+        )}
       </div>
       
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
@@ -111,7 +112,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 regions={regions}
                 isLoading={isLoading}
                 error={error}
-                onSelectRegion={onSelectRegion}
+                onSelectRegion={onSelectRegion} // Ahora pasa solo el ID
                 selectedRegionId={selectedRegionId}
                 showFilters={showFilters}
                 onRefresh={onRefresh}
@@ -120,12 +121,12 @@ const Sidebar: React.FC<SidebarProps> = ({
           
           <TabsContent value="simulation">
             <SimulationPanel
-            selectedRegion={selectedRegion}
-            selectedSpecies={selectedSpecies}
-            onRunSimulation={onRunSimulation}
-            simulationData={simulationData}
-            isSimulating={isSimulating}
-            onReset={onResetSimulation}
+              selectedRegion={selectedRegion}
+              selectedSpecies={selectedSpecies}
+              onRunSimulation={onRunSimulation}
+              simulationData={simulationData}
+              isSimulating={isSimulating}
+              onReset={onResetSimulation}
             />
           </TabsContent>
           

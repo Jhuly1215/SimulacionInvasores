@@ -1,5 +1,5 @@
 import React from 'react';
-import { MapPin, RefreshCw, PlayCircle } from 'lucide-react';
+import { MapPin, RefreshCw } from 'lucide-react';
 import { Loader } from '../UI/Loader';
 
 interface Region {
@@ -15,7 +15,7 @@ interface RegionsListProps {
   regions?: Region[]; // Lista de regiones
   isLoading?: boolean; // Estado de carga
   error?: Error | null; // Error
-  onSelectRegion: (region: Region) => void; // Callback al seleccionar región
+  onSelectRegion: (regionId: string) => void; // Callback al seleccionar región - solo pasa el ID
   selectedRegionId?: string; // ID de la región seleccionada
   showFilters?: boolean; // Mostrar filtros avanzados
   onRefresh?: () => void; // Función para refrescar
@@ -161,18 +161,6 @@ const RegionsList: React.FC<RegionsListProps> = ({
             />
           </div>
           
-          <div className="flex items-center space-x-2">
-            <label className="text-sm font-medium text-gray-700">Sort by:</label>
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as 'name' | 'area')}
-              className="text-sm border border-gray-300 rounded px-2 py-1"
-            >
-              <option value="name">Name</option>
-              <option value="area">Area (largest first)</option>
-            </select>
-          </div>
-          
           {nameFilter && (
             <button
               onClick={() => setNameFilter('')}
@@ -198,7 +186,7 @@ const RegionsList: React.FC<RegionsListProps> = ({
                   ? 'border-blue-600 bg-blue-50 shadow-md' 
                   : 'border-gray-200 hover:border-blue-300 hover:shadow-sm'
               }`}
-              onClick={() => onSelectRegion(region)}
+              onClick={() => onSelectRegion(region.id)} // Solo pasa el ID
             >
               <div className="flex items-center p-3">
                 <div className="flex-1">
@@ -212,10 +200,6 @@ const RegionsList: React.FC<RegionsListProps> = ({
                       Area: {area.toFixed(4)}°²
                     </span>
                   </div>
-                </div>
-                
-                <div className="flex items-center justify-center w-10 h-10 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-full">
-                  <PlayCircle size={20} />
                 </div>
               </div>
               
