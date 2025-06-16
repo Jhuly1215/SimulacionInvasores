@@ -11,7 +11,7 @@ interface SidebarProps {
   isLoading: boolean;
   error: Error | null;
   selectedRegionId: string | undefined;
-  onSelectRegion: (regionId: string) => void; // Cambiado para recibir solo el ID
+  onSelectRegion: (regionId: string) => void;
   onRefresh: () => void;
   showFilters?: boolean;
 
@@ -27,7 +27,6 @@ interface SidebarProps {
   onToggleLayer: (layerId: string) => void;
   
   simulationData: any;
-  selectedRegion: any;
   onResetSimulation: () => void;
   onUpdateSimulationParams?: (params: any) => void;
   onRunSimulation: (params: SimulationRequest) => Promise<void>; 
@@ -68,11 +67,22 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   // simulation props
   simulationData,
-  selectedRegion,
   onRunSimulation,
   onResetSimulation,
+  onCreateCustomSpecies,
 
+  // playback props
   isSimulating,
+  isPlaying,
+  onPlay,
+  onPause,
+  onReset,
+  playbackSpeed,
+  onUpdatePlaybackSpeed,
+  currentTimeStep,
+  totalTimeSteps,
+  onUpdateTimeStep,
+  
   simulationResult,
 }) => {
   const [activeTab, setActiveTab] = useState('species');
@@ -83,6 +93,11 @@ const Sidebar: React.FC<SidebarProps> = ({
       setActiveTab('simulation');
     }
   }, [isSimulating, simulationResult]);
+
+  // Debug: Log when selectedRegionId changes
+  React.useEffect(() => {
+    console.log('Sidebar selectedRegionId changed:', selectedRegionId);
+  }, [selectedRegionId]);
   
   return (
     <div className="h-full flex flex-col overflow-hidden bg-gray-50 shadow-lg">
@@ -112,7 +127,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 regions={regions}
                 isLoading={isLoading}
                 error={error}
-                onSelectRegion={onSelectRegion} // Ahora pasa solo el ID
+                onSelectRegion={onSelectRegion} 
                 selectedRegionId={selectedRegionId}
                 showFilters={showFilters}
                 onRefresh={onRefresh}
@@ -121,12 +136,22 @@ const Sidebar: React.FC<SidebarProps> = ({
           
           <TabsContent value="simulation">
             <SimulationPanel
-              selectedRegion={selectedRegion}
+              selectedRegionId={selectedRegionId}
               selectedSpecies={selectedSpecies}
               onRunSimulation={onRunSimulation}
               simulationData={simulationData}
               isSimulating={isSimulating}
               onReset={onResetSimulation}
+              onCreateCustomSpecies={onCreateCustomSpecies}
+              // Playback controls
+              isPlaying={isPlaying}
+              onPlay={onPlay}
+              onPause={onPause}
+              playbackSpeed={playbackSpeed}
+              onUpdatePlaybackSpeed={onUpdatePlaybackSpeed}
+              currentTimeStep={currentTimeStep}
+              totalTimeSteps={totalTimeSteps}
+              onUpdateTimeStep={onUpdateTimeStep}
             />
           </TabsContent>
           

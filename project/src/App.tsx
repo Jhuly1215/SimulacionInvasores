@@ -113,23 +113,15 @@ function App() {
   }, []);
 
   // Handle starting a simulation
-  const handleRunSimulation = useCallback(async (params: SimulationRequest) => {
-    if (!selectedRegion || !AppRegion) {
-      toast.error('Selecciona una región primero');
-      return;
-    }
-    
-    const request: SimulationRequest = {
-      region_id: AppRegion,
-      species_name: params.species_name,
-      initial_population: params.initial_population,
-      growth_rate: params.growth_rate,
-      dispersal_kernel: params.dispersal_kernel,
-      timesteps: params.timesteps,
-    };
-    
-    await startSimulation(request);
-  }, [selectedRegion, AppRegion, startSimulation]);
+  const handleRunSimulation = useCallback(async (simulationRequest: SimulationRequest) => {
+  console.log('Simulation request received in App:', simulationRequest);
+  
+  if (!AppRegion) {
+    return;
+  }
+  
+  await startSimulation(simulationRequest);
+}, [AppRegion, startSimulation]);
 
   // Handle species filtering
   const handleSpeciesFilter = useCallback((filters: any) => {
@@ -181,7 +173,7 @@ function App() {
       <div className="w-96 flex-shrink-0 overflow-hidden bg-white shadow-lg">
         <Sidebar
           // Region management
-          selectedRegion={selectedRegion}
+          selectedRegion={AppRegion}
           boundingBox={boundingBox}
           canCreateRegion={canCreateRegion}
           isCreatingRegion={isCreating}

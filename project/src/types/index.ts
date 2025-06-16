@@ -84,7 +84,76 @@ export interface SimulationRequest {
 
 // resultados de la simulación
 export interface SimulationResult {
+
+  Time_stemp_URL: string[];
+
 }
+
+// Datos generales de simulación
+export interface SimulationEntry {
+  completed_at: string; // Fecha de finalización
+  requested_at: string; // Fecha de solicitud
+  description: string;
+  status: 'completed' | 'pending' | 'failed';
+
+  parameters: SimulationResponse;
+  timesteps: string[];
+}
+
+// Parámetros principales
+export interface SimulationResponse {
+  commonName: string;
+  scientificName: string;
+  initial_population: number;
+  maxGrowthRate: number;
+  dispersalKernel: number;
+  max_dispersal_km: number;
+  jump_prob: number;
+  impactFactor: number;
+  occurrenceCount: number;
+  mobility: string; // puede ser "terrestrial|aerial|aquatic"
+
+  altitude_tolerance: number[];
+  climate_pref: ClimatePreferenceMap;
+  climate_tolerance: ClimateToleranceMap;
+  habitat_pref: HabitatPreferenceMap;
+
+  gbif_examples: string[]; // Puedes tiparlo mejor si tienes más estructura
+  timesteps: number;
+}
+
+// Preferencias climáticas (valores ideales)
+export interface ClimatePreferenceMap {
+  bio1: number;
+  bio12: number;
+  bio15: number;
+  bio5: number;
+  bio6: number;
+}
+
+// Tolerancia climática (mínimos y máximos por variable)
+export interface ClimateToleranceMap {
+  bio1: [number, number];
+  bio12: [number, number];
+  bio15: [number, number];
+  bio5: [number, number];
+  bio6: [number, number];
+}
+
+// Preferencias de hábitat (por tipo de cobertura del suelo)
+export interface HabitatPreferenceMap {
+  cropland: number;
+  forest_closed: number;
+  forest_open: number;
+  herbaceous: number;
+  moss_lichen: number;
+  shrubs: number;
+  snow_ice: number;
+  urban: number;
+  water: number;
+  wetland: number;
+}
+
 
 // Environment layer types
 export interface LayerRequest {

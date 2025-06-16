@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Pause, RefreshCw, Plus, ChevronDown, ChevronUp, X, Settings } from 'lucide-react';
+import { Play, Pause, RefreshCw, ChevronDown, ChevronUp, Settings } from 'lucide-react';
 import { Loader } from '../UI/Loader';
-import { Species, SimulationRequest, ClimatePreference, ClimateTolerance } from '../../types';
+import { SimulationRequest, ClimatePreference, ClimateTolerance } from '../../types';
 
 interface SimulationPanelProps {
-  selectedRegion: any;
-  selectedSpecies: Species | null;
+  selectedRegionId: string | undefined;
   onRunSimulation: (params: SimulationRequest) => Promise<void>;
   simulationData: any;
   isSimulating: boolean;
@@ -20,7 +19,6 @@ interface SimulationPanelProps {
   currentTimeStep?: number;
   totalTimeSteps?: number;
   onUpdateTimeStep?: (step: number) => void;
-  onCreateCustomSpecies?: (customSpecies: any) => void;
 }
 
 // Extended simulation parameters interface using proper types
@@ -61,8 +59,7 @@ interface ExtendedSimulationParams {
 }
 
 const SimulationPanel: React.FC<SimulationPanelProps> = ({
-  selectedRegion,
-  selectedSpecies,
+  selectedRegionId,
   onRunSimulation,
   simulationData,
   isSimulating,
@@ -74,19 +71,12 @@ const SimulationPanel: React.FC<SimulationPanelProps> = ({
   onUpdatePlaybackSpeed,
   currentTimeStep = 0,
   totalTimeSteps = 0,
-  onUpdateTimeStep,
-  onCreateCustomSpecies
+  onUpdateTimeStep
 }) => {
-  const [showCustomSpecies, setShowCustomSpecies] = useState(false);
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [activeAdvancedTab, setActiveAdvancedTab] = useState('general');
   
-  const [customSpecies, setCustomSpecies] = useState({
-    name: '',
-    initialPopulation: 1000,
-    dispersalRate: 1.0,
-    growthRate: 0.5,
-  });
+  const [speciesName, setSpeciesName] = useState('');
 
   // Extended parameters with all the new fields using proper type structure
   const [params, setParams] = useState<ExtendedSimulationParams>({
@@ -161,11 +151,12 @@ const SimulationPanel: React.FC<SimulationPanelProps> = ({
 
   const mobilityOptions = ['aerial', 'terrestrial', 'aquatic', 'semi_aquatic'];
 
+  // DEBUG: Agregar useEffect para monitorear cambios en selectedRegionId
   useEffect(() => {
-    if (selectedSpecies) {
-      setShowCustomSpecies(false);
-    }
-  }, [selectedSpecies]);
+    console.log('SimulationPanel - selectedRegionId changed:', selectedRegionId);
+    console.log('Type of selectedRegionId:', typeof selectedRegionId);
+    console.log('selectedRegionId truthy?', !!selectedRegionId);
+  }, [selectedRegionId]);
 
   const handleParamChange = (key: string, value: any) => {
     setParams(prev => ({ ...prev, [key]: value }));
@@ -205,28 +196,32 @@ const SimulationPanel: React.FC<SimulationPanelProps> = ({
     }));
   };
 
-  const handleCustomSpeciesChange = (key: string, value: any) => {
-    setCustomSpecies(prev => ({ ...prev, [key]: value }));
-  };
-
-  const handleSubmitCustomSpecies = () => {
-    if (onCreateCustomSpecies) {
-      onCreateCustomSpecies(customSpecies);
-    }
-    setShowCustomSpecies(false);
-  };
-
   const handleRunSimulation = async () => {
-    if (!selectedRegion) {
-      alert('Por favor selecciona una región primero');
+    // ENHANCED DEBUG: Más información de debug
+    console.log('=== DEBUG SIMULATION START ===');
+    console.log('selectedRegionId:', selectedRegionId);
+    console.log('selectedRegionId type:', typeof selectedRegionId);
+    console.log('selectedRegionId length:', selectedRegionId?.length);
+    console.log('selectedRegionId truthy:', !!selectedRegionId);
+    console.log('speciesName:', speciesName);
+    console.log('=== DEBUG SIMULATION END ===');
+
+    // IMPROVED VALIDATION: Más específica y con mejor mensaje de error
+    if (!selectedRegionId) {
+      console.error('No region selected - selectedRegionId is:', selectedRegionId);
+      alert(`Por favor selecciona una región primero. Valor actual: ${selectedRegionId || 'undefined'}`);
       return;
     }
 
-    let simulationRequest: any;
+    if (!speciesName.trim()) {
+      alert('Por favor ingresa un nombre para la especie');
+      return;
+    }
 
     // Build the complete simulation request using the exact variable structure
-    const baseRequest = {
-      region_id: selectedRegion.id || selectedRegion.name || 'default',
+    const simulationRequest: any = {
+      region_id: selectedRegionId.trim(), // FIXED: Trim whitespace
+      species_name: speciesName.trim(),
       initial_population: params.initialPopulation,
       growth_rate: params.growthRate,
       dispersal_kernel: params.dispersalKernel,
@@ -265,34 +260,22 @@ const SimulationPanel: React.FC<SimulationPanelProps> = ({
       }
     };
 
-    if (selectedSpecies) {
-      simulationRequest = {
-        ...baseRequest,
-        species_name: selectedSpecies.name
-      };
-      console.log('Using selected species:', selectedSpecies.name);
-    } else if (showCustomSpecies && customSpecies.name) {
-      simulationRequest = {
-        ...baseRequest,
-        species_name: customSpecies.name
-      };
-    } else {
-      alert('Por favor selecciona una especie o crea una especie personalizada');
-      return;
-    }
-
-    console.log('SimulationRequest with structured data:', simulationRequest);
+    // ENHANCED DEBUG: Log the final request
+    console.log('Final simulation request:', simulationRequest);
 
     try {
+      console.log('Running simulation with request... ');
       await onRunSimulation(simulationRequest);
     } catch (error) {
       console.error('Error running simulation:', error);
-      alert('Error al ejecutar la simulación');
+      alert('Error al ejecutar la simulación: ' + (error as Error).message);
     }
   };
 
   const hasSimulationResults = simulationData && simulationData.length > 0;
-  const canRunSimulation = selectedRegion && (selectedSpecies || (showCustomSpecies && customSpecies.name));
+  
+  // IMPROVED VALIDATION: Más específica para el estado del botón
+  const canRunSimulation = selectedRegionId && speciesName.trim() !== '';
 
   const renderAdvancedTab = () => {
     switch (activeAdvancedTab) {
@@ -488,15 +471,34 @@ const SimulationPanel: React.FC<SimulationPanelProps> = ({
     <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
       <div className="bg-primary-600 text-white p-4">
         <h3 className="text-lg font-semibold">Simulation Panel</h3>
+        {/* ENHANCED: Mejor display de la región con más información de debug */}
+        <div className="mt-2 p-2 bg-white/10 rounded">
+          <p className="text-xs font-medium">
+            Selected Region: {selectedRegionId || 'No region selected'}
+          </p>
+          {selectedRegionId && (
+            <p className="text-xs opacity-75 mt-1">
+              Region ready for simulation
+            </p>
+          )}
+          {/* TEMPORAL DEBUG INFO - remover en producción */}
+          <p className="text-xs opacity-50 mt-1">
+            Debug: Type: {typeof selectedRegionId}, Length: {selectedRegionId?.length || 0}
+          </p>
+        </div>
       </div>
 
       <div className="p-4 space-y-4">
-        {/* Información de región seleccionada */}
-        {selectedRegion && (
-          <div className="bg-blue-50 p-3 rounded-lg">
-            <div className="text-sm font-medium text-blue-800">
-              Región: {selectedRegion.name || 'Región seleccionada'}
-            </div>
+        {/* ENHANCED: Mejor mensaje de error */}
+        {!selectedRegionId && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+            <p className="text-sm text-amber-700 font-medium">⚠️ No Region Selected</p>
+            <p className="text-xs text-amber-600 mt-1">
+              Please select a region from the Regions tab to continue.
+            </p>
+            <p className="text-xs text-amber-500 mt-1">
+              Current value: {selectedRegionId || 'undefined'} (Type: {typeof selectedRegionId})
+            </p>
           </div>
         )}
 
@@ -504,53 +506,20 @@ const SimulationPanel: React.FC<SimulationPanelProps> = ({
           <Loader message="Running simulation..." />
         ) : (
           <>
-            {/* Especie seleccionada o creación de especie personalizada */}
-            {selectedSpecies ? (
-              <div className="bg-primary-50 p-3 rounded-lg">
-                <div className="flex justify-between items-center mb-2">
-                  <h4 className="font-medium text-primary-800">{selectedSpecies.name}</h4>
-                </div>
-                <p className="text-sm text-primary-700 italic mb-1">{selectedSpecies.scientificName}</p>
-                <div className="text-xs text-primary-600">
-                  Impact: <span className="font-medium">{selectedSpecies.impactSummary}</span> 
-                </div>
-              </div>
-            ) : (
+            {/* Species Name Input */}
+            <div className="space-y-3">
+              <h4 className="font-medium text-gray-800">Species Information</h4>
               <div>
-                <button
-                  className="w-full flex items-center justify-between p-3 bg-secondary-50 border border-secondary-200 text-secondary-700 rounded-lg hover:bg-secondary-100"
-                  onClick={() => setShowCustomSpecies(!showCustomSpecies)}
-                >
-                  <span>
-                    {showCustomSpecies ? 'Cancel Custom Species' : 'Create Custom Species'}
-                  </span>
-                  {showCustomSpecies ? <X size={18} /> : <Plus size={18} />}
-                </button>
-
-                {showCustomSpecies && (
-                  <div className="mt-3 p-3 border border-gray-200 rounded-lg space-y-3">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Species Name</label>
-                      <input
-                        type="text"
-                        className="w-full border border-gray-300 rounded-md py-1.5 px-3"
-                        value={customSpecies.name}
-                        onChange={(e) => handleCustomSpeciesChange('name', e.target.value)}
-                        placeholder="e.g., Pacific Sea Lamprey"
-                      />
-                    </div>
-
-                    <button
-                      className="w-full py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:opacity-50"
-                      onClick={handleSubmitCustomSpecies}
-                      disabled={!customSpecies.name}
-                    >
-                      Use Custom Species
-                    </button>
-                  </div>
-                )}
+                <label className="block text-sm font-medium text-gray-700 mb-1">Species Name</label>
+                <input
+                  type="text"
+                  className="w-full border border-gray-300 rounded-md py-2 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  value={speciesName}
+                  onChange={(e) => setSpeciesName(e.target.value)}
+                  placeholder="e.g., Pacific Sea Lamprey"
+                />
               </div>
-            )}
+            </div>
 
             {/* Parámetros básicos de simulación */}
             <div className="space-y-3">
@@ -671,10 +640,24 @@ const SimulationPanel: React.FC<SimulationPanelProps> = ({
               {hasSimulationResults ? 'Run New Simulation' : 'Run Simulation'}
             </button>
 
-            {!selectedRegion && (
-              <p className="text-sm text-amber-600 text-center">
-                Please select a region on the map first
-              </p>
+            {/* ENHANCED: Mensaje de error más específico */}
+            {!selectedRegionId && (
+              <div className="text-center space-y-1">
+                <p className="text-sm text-amber-600">
+                  Please select a region on the map first
+                </p>
+                <p className="text-xs text-gray-500">
+                  Current region ID: {selectedRegionId || 'undefined'}
+                </p>
+              </div>
+            )}
+            
+            {(!speciesName.trim()) && selectedRegionId && (
+              <div className="text-center">
+                <p className="text-sm text-amber-600">
+                  Please enter a species name
+                </p>
+              </div>
             )}
           </>
         )}
