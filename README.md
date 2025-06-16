@@ -45,7 +45,7 @@ app/
 ## 🚀 Instalación y Ejecución Local
 1. Clonar el repositorio
 
-git clone https://github.com/usuario/simulador-invasoras.git
+git clone https://github.com/Jhuly1215/SimulacionInvasores.git
 cd simulador-invasoras
 
 3. Crear entorno virtual
