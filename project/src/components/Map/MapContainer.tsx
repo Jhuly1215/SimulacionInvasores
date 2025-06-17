@@ -7,13 +7,13 @@ import { useMapInteraction } from '../../hooks/useMapInteraction';
 import { useEnvironmentLayers } from '../../hooks/useEnvironmentLayers';
 import SimulationLayer from './SimulationLayer';
 import EnvironmentLayersControl from './EnvironmentLayersControl';
-import { SimulationTimeStep, Layer } from '../../types';
+import { SimulationResult, Layer } from '../../types';
 
 // Fix Leaflet icons (tu código actual sigue igual)
 
 interface MapContainerProps {
   onRegionSelected?: (bbox: any, polygon: any) => void;
-  currentTimeStep?: SimulationTimeStep;
+  currentTimeStep?: SimulationResult;
   environmentLayers?: Layer[];
   className?: string;
 }

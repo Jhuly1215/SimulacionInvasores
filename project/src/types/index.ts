@@ -89,37 +89,11 @@ export interface SimulationResult {
 
 }
 
-// Datos generales de simulación
-export interface SimulationEntry {
-  completed_at: string; // Fecha de finalización
-  requested_at: string; // Fecha de solicitud
-  description: string;
-  status: 'completed' | 'pending' | 'failed';
-
-  parameters: SimulationResponse;
-  timesteps: string[];
-}
-
 // Parámetros principales
 export interface SimulationResponse {
-  commonName: string;
-  scientificName: string;
-  initial_population: number;
-  maxGrowthRate: number;
-  dispersalKernel: number;
-  max_dispersal_km: number;
-  jump_prob: number;
-  impactFactor: number;
-  occurrenceCount: number;
-  mobility: string; // puede ser "terrestrial|aerial|aquatic"
-
-  altitude_tolerance: number[];
-  climate_pref: ClimatePreferenceMap;
-  climate_tolerance: ClimateToleranceMap;
-  habitat_pref: HabitatPreferenceMap;
-
-  gbif_examples: string[]; // Puedes tiparlo mejor si tienes más estructura
-  timesteps: number;
+  region_id: string;
+  status: string;
+  timesteps: SimulationResult
 }
 
 // Preferencias climáticas (valores ideales)

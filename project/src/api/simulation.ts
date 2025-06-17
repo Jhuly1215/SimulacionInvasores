@@ -29,6 +29,7 @@ export const simulationAPI = {
   startSimulation: async (simulationData: SimulationRequest): Promise<SimulationResponse> => {
     try {
       const { data } = await api.post<SimulationResponse>('/simulation/', simulationData);
+      console.log('Data de la simulacion: ', data)
       return data;
     } catch (error) {
       console.error('Error starting simulation:', error);

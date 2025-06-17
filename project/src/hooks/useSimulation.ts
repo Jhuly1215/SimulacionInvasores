@@ -64,15 +64,14 @@ export const useSimulation = (): UseSimulationReturn => {
 
     try {
       const response = await simulationAPI.startSimulation(request);
-      console.log('📡 Received simulation response:', response);
       
-      const isCompleted = !!response.completed_at;
-      console.log('🏁 Simulation completed:', isCompleted);
+      const isCompleted = !!response.status;
+      console.log('Simulation completed:', isCompleted);
       
       let simulationResult: SimulationResult | null = null;
       
       if (isCompleted) {
-        console.log('🎯 Simulation is completed, extracting results...');
+        console.log('Simulation is completed, extracting results...');
         simulationResult = extractSimulationResult(response);
       }
 
@@ -110,16 +109,15 @@ export const useSimulation = (): UseSimulationReturn => {
 
     try {
       const response = await simulationAPI.getSimulationStatus(statusRequest);
-      console.log('📡 Received status response:', response);
       
-      const isCompleted = !!response.completed_at;
-      console.log('🏁 Simulation completed:', isCompleted);
+      const isCompleted = !!response.status;
+      console.log('Simulation completed:', isCompleted);
       
       let simulationResult: SimulationResult | null = null;
       
       if (isCompleted) {
-        console.log('🎯 Simulation is completed, extracting results...');
         simulationResult = extractSimulationResult(response);
+        console.log('🎯 Simulation is completed, extracting results:', simulationResult);
       }
 
       setState(prev => ({

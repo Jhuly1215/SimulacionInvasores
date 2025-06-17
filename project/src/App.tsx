@@ -8,7 +8,7 @@ import { useEnvironmentLayers } from './hooks/useEnvironmentLayers';
 import { useSimulation } from './hooks/useSimulation';
 import { useMapInteraction } from './hooks/useMapInteraction';
 import { useRegionList } from './hooks/useRegionList';
-import { Region, SimulationRequest } from './types';
+import { Region, SimulationRequest, SimulationResult } from './types';
 
 function App() {
   
@@ -19,8 +19,6 @@ function App() {
     regionsList,
     isLoading,
     error,
-    selectedRegionList,
-    onSelectRegionList,
     onRefresh,
     clearSelection,
   } = useRegionList();
@@ -32,11 +30,9 @@ function App() {
     isCreating,
     regions,
     canCreateRegion,
-    lastCreatedRegion,
     initializeDrawControl,
     clearDrawings,
     createRegion,
-    getRegion,
   } = useMapInteraction({
     onRegionSelected: (region: Region) => {
       console.log('Region selected:', region);
@@ -52,15 +48,7 @@ function App() {
 
   // Species list hook - manages species data
   const {
-    species,
-    loading: speciesLoading,
     error: speciesError,
-    fetchSpeciesFromRegion,
-    getSpeciesByStatus,
-    getSpeciesByImpact,
-    getSpeciesCount,
-    getImpactDistribution,
-    replaceAllSpecies,
     clearSpecies,
   } = useSpeciesList({
     initialRegionId: AppRegion || undefined,
@@ -86,9 +74,8 @@ function App() {
     simulationData,
     isSimulationRunning,
     startSimulation,
-    getSimulationStatus,
-    clearError: clearSimulationError,
     resetSimulation,
+    simulationResult
   } = useSimulation();
 
   // Handle creating a new region
@@ -123,12 +110,6 @@ function App() {
   await startSimulation(simulationRequest);
 }, [AppRegion, startSimulation]);
 
-  // Handle species filtering
-  const handleSpeciesFilter = useCallback((filters: any) => {
-    // Implement filtering logic based on your requirements
-    console.log('Applying species filters:', filters);
-  }, []);
-
   // Handle layer visibility changes
   const handleToggleLayer = useCallback((layerId: string) => {
     toggleLayer(layerId);
@@ -143,6 +124,11 @@ function App() {
     setVisibleLayers([]);
     toast.info('Todos los datos han sido limpiados');
   }, [clearDrawings, clearSpecies, resetSimulation, setVisibleLayers]);
+
+  // simulation check
+  React.useEffect(() => {
+  console.log('🎯 SimulationResult changed in App:', simulationResult);
+}, [simulationResult]);
 
   // Handle errors
   React.useEffect(() => {
