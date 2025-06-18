@@ -230,7 +230,10 @@ function App() {
           simulationData={simulationData}
         >
           {simulationResult?.Time_stemp_URL && simulationResult.Time_stemp_URL[selectedUrl] && (
-            <GeoTiffLayer storagePath={simulationResult.Time_stemp_URL[selectedUrl]} />
+            <GeoTiffLayer 
+              key={`geotiff-${selectedUrl}`}
+              storagePath={simulationResult.Time_stemp_URL[selectedUrl]} 
+            />
           )}
         </MapContainer>
       </div>

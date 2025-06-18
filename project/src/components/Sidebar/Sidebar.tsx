@@ -128,7 +128,6 @@ const Sidebar: React.FC<SidebarProps> = ({
         <TabsList className="p-2 bg-white border-b">
           <TabsTrigger value="species">Regions</TabsTrigger>
           <TabsTrigger value="simulation">Simulation</TabsTrigger>
-          <TabsTrigger value="results">Results</TabsTrigger>
         </TabsList>
         
         <div className="flex-1 overflow-y-auto p-4">

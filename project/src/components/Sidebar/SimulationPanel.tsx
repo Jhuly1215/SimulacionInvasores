@@ -87,7 +87,7 @@ const SimulationPanel: React.FC<SimulationPanelProps> = ({
     dispersalKernel: 800,
     
     // Advanced general parameters
-    dtYears: 30,
+    dtYears: 2,
     mobility: 'aerial',
     jumpProb: 0.9,
     maxDispersalKm: 20,
@@ -281,7 +281,7 @@ const SimulationPanel: React.FC<SimulationPanelProps> = ({
               <input
                 type="range"
                 min="1"
-                max="50"
+                max="5"
                 step="1"
                 className="w-full"
                 value={params.dtYears}
@@ -565,7 +565,7 @@ const SimulationPanel: React.FC<SimulationPanelProps> = ({
                 <input
                   type="range"
                   min="100"
-                  max="2000"
+                  max="1000"
                   step="50"
                   className="w-full"
                   value={params.dispersalKernel}
