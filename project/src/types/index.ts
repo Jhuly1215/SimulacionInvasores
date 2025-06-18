@@ -84,9 +84,7 @@ export interface SimulationRequest {
 
 // resultados de la simulación
 export interface SimulationResult {
-
   Time_stemp_URL: string[];
-
 }
 
 // Parámetros principales

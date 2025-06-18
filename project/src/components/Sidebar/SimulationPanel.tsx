@@ -197,14 +197,6 @@ const SimulationPanel: React.FC<SimulationPanelProps> = ({
   };
 
   const handleRunSimulation = async () => {
-    // ENHANCED DEBUG: Más información de debug
-    console.log('=== DEBUG SIMULATION START ===');
-    console.log('selectedRegionId:', selectedRegionId);
-    console.log('selectedRegionId type:', typeof selectedRegionId);
-    console.log('selectedRegionId length:', selectedRegionId?.length);
-    console.log('selectedRegionId truthy:', !!selectedRegionId);
-    console.log('speciesName:', speciesName);
-    console.log('=== DEBUG SIMULATION END ===');
 
     // IMPROVED VALIDATION: Más específica y con mejor mensaje de error
     if (!selectedRegionId) {
@@ -546,12 +538,12 @@ const SimulationPanel: React.FC<SimulationPanelProps> = ({
                 </label>
                 <input
                   type="range"
-                  min="1"
-                  max="10000"
-                  step="1"
+                  min="0.1"
+                  max="1.0"
+                  step="0.01"
                   className="w-full"
                   value={params.initialPopulation}
-                  onChange={(e) => handleParamChange('initialPopulation', parseInt(e.target.value))}
+                  onChange={(e) => handleParamChange('initialPopulation', parseFloat(e.target.value))}
                 />
               </div>
 
@@ -562,7 +554,7 @@ const SimulationPanel: React.FC<SimulationPanelProps> = ({
                 <input
                   type="range"
                   min="0.1"
-                  max="2.0"
+                  max="1.0"
                   step="0.01"
                   className="w-full"
                   value={params.growthRate}
