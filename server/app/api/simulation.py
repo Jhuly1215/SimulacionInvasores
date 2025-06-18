@@ -68,22 +68,17 @@ async def _background_simulation(region_id: str, species_params: Dict):
         })
 
 @router.get(
-    "/region/{region_id}",
-    response_model=List[SimulationResponse],
-    summary="Obtiene todas las simulaciones asociadas a una región"
+    "/",
+    response_model=SimulationResponse,
+    summary="Obtiene estado y resultados de la simulación"
 )
-async def get_simulations_by_region(region_id: str):
-    try:
-        sims = db.collection("simulation").where("region_id", "==", region_id).stream()
-        simulations = []
-        for doc in sims:
-            data = doc.to_dict()
-            simulations.append(SimulationResponse(
-                status=data.get("status"),
-                timesteps=data.get("timesteps", []),
-                error=data.get("error")
-            ))
-        return simulations
-    except Exception as e:
-        logger.exception(f"Error obteniendo simulaciones para región {region_id}")
-        raise HTTPException(status_code=500, detail="Error al recuperar las simulaciones")
+async def read_simulation(region_id: str):
+    doc = db.collection("simulation").document(region_id).get()
+    if not doc.exists:
+        raise HTTPException(status_code=404, detail="No existe simulación para esa región")
+    data = doc.to_dict()
+    return SimulationResponse(
+        status=data.get("status"),
+        timesteps=data.get("timesteps", []),
+        error=data.get("error")
+    )
