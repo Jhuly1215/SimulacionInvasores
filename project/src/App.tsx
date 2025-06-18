@@ -11,11 +11,22 @@ import { useMapInteraction } from './hooks/useMapInteraction';
 import { useRegionList } from './hooks/useRegionList';
 import { Region, SimulationRequest, SimulationResult } from './types';
 
+// Helper function to calculate region center
+const calculateRegionCenter = (points: Array<{latitude: number, longitude: number}>) => {
+  if (!points || points.length === 0) return null;
+  
+  const lat = points.reduce((sum, point) => sum + point.latitude, 0) / points.length;
+  const lng = points.reduce((sum, point) => sum + point.longitude, 0) / points.length;
+  
+  return { lat, lng };
+};
+
 function App() {
   
   const [AppRegion, setAppRegion] = useState<string | undefined>(undefined);
   const [selectedUrl, setSelectedUrl] = useState<number>(0);
   const [simulationRequest, setSimulationRequest] = useState<SimulationRequest | undefined>(undefined);
+  const [mapCenter, setMapCenter] = useState<{lat: number, lng: number} | null>(null);
 
   // Region list hook - manages regions and their interactions
   const {  
@@ -83,9 +94,9 @@ function App() {
 
   // handler para selectedUrl
   const handleSelectedUrlChange = useCallback((url: number) => {
-  setSelectedUrl(url);
-  console.log("selected url: ", url)
-}, []);
+    setSelectedUrl(url);
+    console.log("selected url: ", url)
+  }, []);
 
   // Handle creating a new region
   const handleCreateRegion = useCallback(async (name: string, speciesList: any[] = []) => {
@@ -101,24 +112,34 @@ function App() {
     }
   }, [canCreateRegion, createRegion]);
 
-  // Función simplificada para manejar selección de región
+  // Enhanced function to handle region selection with map movement
   const handleSelectRegion = useCallback((regionId: string) => {
     setAppRegion(regionId);
     console.log('Region selected from list:', regionId);
-    // Solo guarda el ID, no hace nada más
-  }, []);
+    
+    // Find the selected region and move map to its center
+    const selectedRegion = regionsList.find(region => region.id === regionId);
+    if (selectedRegion && selectedRegion.points && selectedRegion.points.length > 0) {
+      const center = calculateRegionCenter(selectedRegion.points);
+      if (center) {
+        setMapCenter(center);
+        console.log('Moving map to region center:', center);
+        toast.info(`Navegando a región: ${selectedRegion.name}`);
+      }
+    }
+  }, [regionsList]);
 
   // Handle starting a simulation
   const handleRunSimulation = useCallback(async (simulationRequest: SimulationRequest) => {
-  console.log('Simulation request received in App:', simulationRequest);
-  setSimulationRequest(simulationRequest)
-  
-  if (!AppRegion) {
-    return;
-  }
-  
-  await startSimulation(simulationRequest);
-}, [AppRegion, startSimulation]);
+    console.log('Simulation request received in App:', simulationRequest);
+    setSimulationRequest(simulationRequest)
+    
+    if (!AppRegion) {
+      return;
+    }
+    
+    await startSimulation(simulationRequest);
+  }, [AppRegion, startSimulation]);
 
   // Handle layer visibility changes
   const handleToggleLayer = useCallback((layerId: string) => {
@@ -132,14 +153,15 @@ function App() {
     resetSimulation();
     setAppRegion(undefined);
     setVisibleLayers([]);
+    setMapCenter(null); // Clear map center
     toast.info('Todos los datos han sido limpiados');
     setSelectedUrl(0);
   }, [clearDrawings, clearSpecies, resetSimulation, setVisibleLayers]);
 
   // simulation check
   React.useEffect(() => {
-  console.log('🎯 SimulationResult changed in App:', simulationResult);
-}, [simulationResult]);
+    console.log('🎯 SimulationResult changed in App:', simulationResult);
+  }, [simulationResult]);
 
   // Handle errors
   React.useEffect(() => {
@@ -156,12 +178,12 @@ function App() {
 
   // LOG cuando cambia AppRegion
   React.useEffect(() => {
-      console.log('AppRegion changed to:', AppRegion);
+    console.log('AppRegion changed to:', AppRegion);
   }, [AppRegion]);
 
   // LOG cuando cambia regionsList
   React.useEffect(() => {
-      console.log('Regions list:', regionsList);
+    console.log('Regions list:', regionsList);
   }, [regionsList]);
 
   return (
@@ -177,14 +199,14 @@ function App() {
           regions={regionsList}
           AppRegion={AppRegion}
           onCreateRegion={handleCreateRegion}
-          onSelectRegion={handleSelectRegion} // Función simplificada
+          onSelectRegion={handleSelectRegion} // Enhanced function with map movement
           onClearDrawings={clearDrawings}
 
           //region list
           isLoading={isLoading}
           error={error}
-          selectedRegionId={AppRegion} // Usar AppRegion directamente
-          onSelectRegionList={handleSelectRegion} // Misma función simplificada
+          selectedRegionId={AppRegion}
+          onSelectRegionList={handleSelectRegion} // Enhanced function with map movement
           onRefresh={onRefresh}
           clearSelection={clearSelection}
 
@@ -228,6 +250,10 @@ function App() {
           
           // Simulation data
           simulationData={simulationData}
+          
+          // Map center for navigation
+          mapCenter={mapCenter}
+          onMapCenterProcessed={() => setMapCenter(null)} // Clear center after processing
         >
           {simulationResult?.Time_stemp_URL && simulationResult.Time_stemp_URL[selectedUrl] && (
             <GeoTiffLayer 

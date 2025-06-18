@@ -17,7 +17,16 @@ interface MapContainerProps {
   currentTimeStep?: SimulationResult;
   environmentLayers?: Layer[];
   className?: string;
-  children?: ReactNode; 
+  children?: ReactNode;
+  // New props for map movement
+  mapCenter?: {lat: number, lng: number} | null;
+  onMapCenterProcessed?: () => void;
+  // Props from App component
+  onMapReady?: (map: L.Map) => void;
+  selectedRegion?: any;
+  boundingBox?: any;
+  regions?: any[];
+  simulationData?: any;
 }
 
 const MapContainer: React.FC<MapContainerProps> = ({
@@ -25,14 +34,23 @@ const MapContainer: React.FC<MapContainerProps> = ({
   currentTimeStep,
   environmentLayers = [],
   className,
-  children, 
+  children,
+  mapCenter,
+  onMapCenterProcessed,
+  onMapReady,
+  selectedRegion,
+  boundingBox,
+  regions,
+  simulationData,
 }) => {
   const [featureGroup, setFeatureGroup] = useState<L.FeatureGroup | null>(null);
+  const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
+  
   const { 
     initializeDrawControl, 
     createRegion,
-    selectedRegion,
-    boundingBox,
+    selectedRegion: hookSelectedRegion,
+    boundingBox: hookBoundingBox,
     canCreateRegion,
     clearDrawings
   } = useMapInteraction({
@@ -45,10 +63,19 @@ const MapContainer: React.FC<MapContainerProps> = ({
     }
   });
 
-  // Componente interno para manejar los controles de dibujo
-  const DrawControl = () => {
+  // Componente interno para manejar los controles de dibujo y el movimiento del mapa
+  const MapController = () => {
     const map = useMap();
-    const fgRef = useRef<L.FeatureGroup>(null);
+
+    useEffect(() => {
+      if (map && !mapInstance) {
+        setMapInstance(map);
+        // Call onMapReady if provided
+        if (onMapReady) {
+          onMapReady(map);
+        }
+      }
+    }, [map]);
 
     useEffect(() => {
       if (map && !featureGroup) {
@@ -59,11 +86,37 @@ const MapContainer: React.FC<MapContainerProps> = ({
       }
     }, [map, initializeDrawControl]);
 
+    // Handle map center changes for region navigation
+    useEffect(() => {
+      if (mapCenter && map) {
+        console.log('Moving map to center:', mapCenter);
+        
+        // Move the map to the new center with a smooth animation
+        map.setView([mapCenter.lat, mapCenter.lng], 12, {
+          animate: true,
+          duration: 1.0 // Animation duration in seconds
+        });
+        
+        // Call the callback to clear the center state after a delay
+        // to ensure the animation completes
+        setTimeout(() => {
+          if (onMapCenterProcessed) {
+            onMapCenterProcessed();
+          }
+        }, 1100); // Slightly longer than animation duration
+        
+        console.log('Map moved to:', mapCenter);
+      }
+    }, [mapCenter, map, onMapCenterProcessed]);
+
     return null;
   };
 
   const handleCreateRegion = async () => {
-    if (!selectedRegion) return;
+    // Use the selectedRegion from props or fallback to hook's selectedRegion
+    const currentSelectedRegion = selectedRegion || hookSelectedRegion;
+    
+    if (!currentSelectedRegion) return;
     
     try {
       const regionName = prompt('Enter region name:');
@@ -73,13 +126,18 @@ const MapContainer: React.FC<MapContainerProps> = ({
       console.log('Region created:', newRegion);
       
       // Si necesitas notificar al componente padre
-      if (onRegionSelected && boundingBox) {
-        onRegionSelected(boundingBox, selectedRegion);
+      const currentBoundingBox = boundingBox || hookBoundingBox;
+      if (onRegionSelected && currentBoundingBox) {
+        onRegionSelected(currentBoundingBox, currentSelectedRegion);
       }
     } catch (error) {
       console.error('Error creating region:', error);
     }
   };
+
+  // Use selectedRegion from props or fallback to hook's selectedRegion
+  const currentSelectedRegion = selectedRegion || hookSelectedRegion;
+  const currentCanCreateRegion = currentSelectedRegion ? true : canCreateRegion;
 
   return (
     <div className="relative h-full w-full">
@@ -93,7 +151,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
         
-        <DrawControl />
+        <MapController />
         <EnvironmentLayersControl layers={environmentLayers} />
         
         {currentTimeStep && (
@@ -108,8 +166,8 @@ const MapContainer: React.FC<MapContainerProps> = ({
       <div className="absolute top-4 right-4 z-[1000] flex space-x-2">
         <button
           onClick={handleCreateRegion}
-          disabled={!canCreateRegion}
-          className={`px-4 py-2 rounded ${canCreateRegion ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-400 cursor-not-allowed'} text-white`}
+          disabled={!currentCanCreateRegion}
+          className={`px-4 py-2 rounded ${currentCanCreateRegion ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-400 cursor-not-allowed'} text-white`}
         >
           Create Region
         </button>
