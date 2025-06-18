@@ -41,21 +41,29 @@ class SimulationResponse(BaseModel):
     summary="Dispara la simulación de invasión para región y especie"
 )
 async def create_simulation(req: SimulationRequest, bg: BackgroundTasks):
+    # 1) Marcamos la solicitud en Firestore
     db.collection("simulation").document(req.region_id).set({
         "status": "pending",
         "requested_at": firestore.SERVER_TIMESTAMP
     }, merge=True)
 
-    species_params = {
-        "commonName": req.species_name,
-        "initial_population": req.initial_population,
-        "maxGrowthRate": req.growth_rate,
-        "dispersalKernel": req.dispersal_kernel,
-        "timesteps": req.timesteps
-    }
+    # 2) Tomamos TODO el cuerpo como dict interno ---------------------------
+    species_params = req.dict(by_alias=False, exclude={'region_id'}).copy()
 
+    # 3) Renombramos las tres claves que tu servicio espera en camelCase -----
+    species_params["commonName"]       = species_params.pop("species_name")
+    species_params["maxGrowthRate"]    = species_params.pop("growth_rate")
+    species_params["dispersalKernel"]  = species_params.pop("dispersal_kernel")
+
+    # (el resto de campos —jump_prob, mobility, dt_years, etc.— se mantienen)
+
+    logger.debug(f"[API] species_params finales: {species_params}")
+
+    # 4) Llamamos a la simulación
     urls = await generate_simulation_for_region(req.region_id, species_params)
+
     return {"region_id": req.region_id, "status": "completed", "timesteps": urls}
+
 
 async def _background_simulation(region_id: str, species_params: Dict):
     try:

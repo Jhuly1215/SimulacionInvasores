@@ -374,21 +374,20 @@ def build_suitability_and_barrier(
     suitability = np.clip(suitability, 0.0, 1.0)
 
     # — 5) Barrier fija —
+    # — 5) Barrier dinámica basada en preferencias inversas —
     barrier = np.zeros((H, W), dtype=np.float32)
-    # Permanent water bodies (cód. 80) → barrera total
-    barrier[class_arr == 80] = 1.0
+    species_pref = species_params.get('habitat_pref', {})
 
-    # Bare / sparse vegetation (cód. 60) → barrera moderada
-    barrier[class_arr == 60] = 0.7
+    # Para cada clase de cobertura Copernicus...
+    for code in BASE_CLASS_WEIGHTS:
+        habitat_cat = CODE_TO_CAT.get(code)
+        if habitat_cat is None:
+            continue
+        # Si la especie prefiere poco ese hábitat → mayor barrera
+        pref = species_pref.get(habitat_cat, 1.0)  # default 1.0 = sin barrera
+        barrier_val = 1.0 - pref  # inverso de la preferencia
+        barrier[class_arr == code] = barrier_val
 
-    # Cropland (cód. 40) → barrera baja
-    barrier[class_arr == 40] = 0.3
-
-    # Urban / built-up (cód. 50) → barrera alta
-    barrier[class_arr == 50] = 0.85
-
-    # Open sea (cód. 200) → barrera total (igual que agua)
-    barrier[class_arr == 200] = 1.0
 
     # — 6) Devolver —
     meta.update({
@@ -416,11 +415,13 @@ def run_dynamic_simulation(
     r_base     = species_params.get("maxGrowthRate", 0.1)
     sigma_m    = species_params.get("dispersalKernel", 500)
     mobility   = species_params.get("mobility", "terrestrial")
+
+    logger.debug(f"[SIM] jump_prob recibido: {species_params.get('jump_prob')}")
     jump_prob  = species_params.get("jump_prob", 0.0)
     init_pop   = species_params.get("initial_population", 0.01)
     T          = species_params.get("timesteps", 20)
     dt         = species_params.get("dt_years", 1.0)
-    threshold  = init_pop * 0.5
+    
 
     # --- Pre‐cálculo: origen central (siempre el mismo) ---
     centroid = polygon_gdf.geometry[0].centroid
@@ -439,12 +440,25 @@ def run_dynamic_simulation(
     kernel     = np.exp(-(xv**2 + yv**2) / (2 * sigma_px**2))
     kernel    /= kernel.sum()
 
-    # inicializar D e Infested
-    D        = np.zeros((height, width), dtype=np.float32)
-    Infested = np.zeros_like(D, dtype=np.uint8)
+    # --- inicializar matrices ---
+    D = np.zeros((height, width), dtype=np.float32)
+    # umbral por píxel, depende solo de suitability (no cambia en el tiempo)
+    
+    # población inicial
     if 0 <= row0 < height and 0 <= col0 < width:
         D[row0, col0] = init_pop
-        Infested[row0, col0] = 1
+
+    # umbral por píxel (constante en el tiempo)
+    local_threshold = np.maximum(0.05, 0.5 * suitability)
+
+    # capa Infested inicial
+    Infested = (D > local_threshold).astype(np.uint8)
+
+    logger.debug(f"[SIM] Origen: fila={row0}, columna={col0}")
+    logger.debug(f"[SIM] Suitability en origen: {suitability[row0, col0]:.4f}")
+    logger.debug(f"[SIM] Barrier en origen: {barrier[row0, col0]:.4f}")
+    logger.debug(f"[SIM] Initial D en origen: {D[row0, col0]:.4f}")
+
 
     sim_folder = os.path.join(tmp_folder, "simulation", region_id)
     os.makedirs(sim_folder, exist_ok=True)
@@ -456,15 +470,18 @@ def run_dynamic_simulation(
 
     for t in range(T):
         # --- crecimiento logístico escalado por suitability y dt ---
+        D = np.clip(D, 0.0, suitability)  # o el límite que creas razonable
         growth = r_base * suitability * D * (1 - D / (suitability + 1e-6)) * dt
-        D2     = D + growth
+        D2 = np.clip(D + growth, 0.0, suitability)
 
         # --- dispersión local ---
         dispersed = convolve2d(D2, kernel, mode="same", boundary="fill", fillvalue=0)
         D_next    = D2 + dispersed * suitability * (1 - barrier)
 
+        logger.debug(f"[SIM][t={t}] Evaluando salto aéreo: rand={np.random.rand():.2f} < jump_prob={jump_prob}")
         # --- dispersión por salto aéreo (solo para aves) ---
         if mobility == "aerial" and np.random.rand() < jump_prob:
+            
             # tomo siempre la célula central como origen
             max_disp_m  = species_params.get("max_dispersal_km", 10.0) * 1000.0
             max_disp_px = max(int(max_disp_m / pix_size_m), 1)
@@ -474,13 +491,19 @@ def run_dynamic_simulation(
             di     = int(r_px * np.sin(theta))
             dj     = int(r_px * np.cos(theta))
             ni, nj = row0 + di, col0 + dj
-            if 0 <= ni < height and 0 <= nj < width:
-                D_next[ni, nj] += init_pop
-                logger.debug(f"[SIM][t={t}] aerial jump to ({ni},{nj})")
 
+            margin_px = rad
+            if (margin_px <= ni < height - margin_px) and (margin_px <= nj < width - margin_px):
+                seed = min(init_pop, suitability[ni, nj] * 0.5)
+                D_next[ni, nj] = max(D_next[ni, nj], seed)   # ← usar D_next
+                logger.debug(f"[SIM][t={t}] Salto aéreo activado: origen=({row0},{col0}), destino=({ni},{nj})")
+                logger.debug(f"[SIM][t={t}] Post-salto: D={D_next[ni, nj]:.4f}, suitability={suitability[ni, nj]:.4f}")
+            else:
+                logger.debug(f"[SIM][t={t}] Salto aéreo IGNORADO fuera de límites: ({ni},{nj}) no se actualiza")
         # --- actualizar Infested y D ---
-        Infested = (D_next > threshold).astype(np.uint8)
+        Infested = (D_next > local_threshold).astype(np.uint8)
         D        = D_next
+
 
         # --- guardar GeoTIFF / COG ---
         out_meta = {
@@ -531,7 +554,8 @@ async def generate_simulation_for_region(
     region_id: str,
     species_params: Dict
 ) -> List[str]:
-    logger.debug(f"[SIM] Iniciando simulación para región={region_id} con params={species_params}")
+    logger.debug(f"[SIM] Iniciando simulación para región={region_id}")
+    logger.debug(f"[SIM] species_params recibidos al iniciar: {species_params}")
 
     # 1) Nombre científico + GBIF
     #common = species_params.get("commonName") or species_params.get("scientificName")
