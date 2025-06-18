@@ -108,8 +108,6 @@ export const useEnvironmentLayers = (regionId?: string) => {
     };
   });
 
-  console.log('Processed layers:', layers);
-
   const layersWithVisibility = layers.map((layer) => ({
     ...layer,
     visible: visibleLayers.includes(layer.id),
@@ -133,10 +131,6 @@ export const useEnvironmentLayers = (regionId?: string) => {
       return newState;
     });
   }, []);
-
-  useEffect(() => {
-    console.log('Visible layers updated:', visibleLayers);
-  }, [visibleLayers]);
 
   return {
     layers: layersWithVisibility,

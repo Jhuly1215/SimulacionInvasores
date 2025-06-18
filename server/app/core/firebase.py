@@ -2,11 +2,20 @@
 
 import firebase_admin
 from firebase_admin import credentials, firestore, storage
-cred = credentials.Certificate("firebase_credentials.json")
+import json
+
+# Carga las credenciales desde el archivo JSON
+with open("firebase_credentials.json") as f:
+    cred_dict = json.load(f)
+
+cred = credentials.Certificate(cred_dict)
+
+# Usa el storageBucket directamente del JSON
+bucket_name = cred_dict.get("storageBucket")
 
 # Inicializa la App e incluye el nombre de tu bucket de Cloud Storage
 firebase_admin.initialize_app(cred, {
-    "storageBucket": "invasores-72d3c.firebasestorage.app"
+    "storageBucket": bucket_name
 })
 
 # Cliente de Firestore

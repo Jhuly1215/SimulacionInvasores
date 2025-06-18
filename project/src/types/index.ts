@@ -33,48 +33,99 @@ export interface SpeciesGenerationResult {
   error?: string;
 }
 
-// Simulation related types
-export interface SimulationParams {
-  regionPolygon: GeoPolygon;
-  speciesId?: string;
-  customSpecies?: {
-    name: string;
-    type: 'plant' | 'animal' | 'fungi' | 'other';
-    dispersalRate: number;
-    growthRate: number;
-    habitatPreference: string[];
-  };
-  environmentLayers: string[];
-  timeSteps: number;
-  kernelType: 'exponential' | 'gaussian' | 'fat-tailed';
-  stochastic: boolean;
+// Tipos auxiliares
+
+export type HabitatPreference = {
+  forest_closed: number;
+  forest_open: number;
+  shrubs: number;
+  herbaceous: number;
+  cropland: number;
+  urban: number;
+  snow_ice: number;
+  water: number;
+  wetland: number;
+  moss_lichen: number;
+};
+
+export type ClimatePreference = {
+  bio1: number;
+  bio5: number;
+  bio6: number;
+  bio12: number;
+  bio15: number;
+};
+
+export type ClimateTolerance = {
+  bio1: [number, number];
+  bio5: [number, number];
+  bio6: [number, number];
+  bio12: [number, number];
+  bio15: [number, number];
+};
+
+// Solicitud de simulación completa
+export interface SimulationRequest {
+  region_id: string;
+  species_name: string;
+  initial_population: number;
+  growth_rate: number;
+  dispersal_kernel: number;
+  timesteps: number;
+  dt_years: number;
+  mobility: 'aerial' | 'terrestrial' | 'aquatic';
+  jump_prob: number;
+  max_dispersal_km: number;
+  altitude_tolerance: [number, number];
+  habitat_pref: HabitatPreference;
+  climate_pref: ClimatePreference;
+  climate_tolerance: ClimateTolerance;
 }
 
-export interface SimulationTimeStep {
-  timeStep: number;
-  cellData: {
-    x: number;
-    y: number;
-    population: number;
-  }[];
-  stats: {
-    totalArea: number;
-    invasionFrontSpeed: number;
-    ecosystemImpact: number;
-  };
-}
-
+// resultados de la simulación
 export interface SimulationResult {
-  simulationId: string;
-  species: Species | SimulationParams['customSpecies'];
-  timeSteps: SimulationTimeStep[];
-  summary: {
-    maxPopulation: number;
-    finalArea: number;
-    averageSpeed: number;
-    totalImpact: number;
-  };
+  Time_stemp_URL: string[];
 }
+
+// Parámetros principales
+export interface SimulationResponse {
+  region_id: string;
+  status: string;
+  timesteps: SimulationResult
+}
+
+// Preferencias climáticas (valores ideales)
+export interface ClimatePreferenceMap {
+  bio1: number;
+  bio12: number;
+  bio15: number;
+  bio5: number;
+  bio6: number;
+}
+
+// Tolerancia climática (mínimos y máximos por variable)
+export interface ClimateToleranceMap {
+  bio1: [number, number];
+  bio12: [number, number];
+  bio15: [number, number];
+  bio5: [number, number];
+  bio6: [number, number];
+}
+
+// Preferencias de hábitat (por tipo de cobertura del suelo)
+export interface HabitatPreferenceMap {
+  cropland: number;
+  forest_closed: number;
+  forest_open: number;
+  herbaceous: number;
+  moss_lichen: number;
+  shrubs: number;
+  snow_ice: number;
+  urban: number;
+  water: number;
+  wetland: number;
+}
+
 
 // Environment layer types
 export interface LayerRequest {
@@ -121,12 +172,13 @@ export interface Point {
 }
 
 export interface Region {
-  id?: string;
+  id: string;
   name: string;
   points: Point[];
-  species_list: Species[];
-  createdAt?: string;
-  updatedAt?: string;
+}
+
+export interface RegionResponse {
+  regions: Region[];
 }
 
 export interface CreateRegionRequest {

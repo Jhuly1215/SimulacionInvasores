@@ -433,7 +433,7 @@ def run_dynamic_simulation(
         sigma_m *= 2.0
 
     # construir kernel de dispersión
-    pix_size_m = 100.0
+    pix_size_m = 10.0
     sigma_px   = sigma_m / pix_size_m
     rad        = max(int(3 * sigma_px), 1)
     yv, xv     = np.ogrid[-rad:rad+1, -rad:rad+1]

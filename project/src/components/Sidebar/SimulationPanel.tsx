@@ -1,292 +1,689 @@
-import React, { useState } from 'react';
-import { Play, Pause, RefreshCw, Plus, ChevronDown, ChevronUp } from 'lucide-react';
-import { Species } from '../../types';
+import React, { useState, useEffect } from 'react';
+import { Play, Pause, RefreshCw, ChevronDown, ChevronUp, Settings } from 'lucide-react';
 import { Loader } from '../UI/Loader';
+import { SimulationRequest, ClimatePreference, ClimateTolerance } from '../../types';
 
 interface SimulationPanelProps {
-  selectedSpecies: Species | null;
-  onUnselect: () => void;
-  onUpdateParams: (params: any) => void;
-  onStartSimulation: () => void;
-  onCreateCustomSpecies: (customSpecies: any) => void;
+  selectedRegionId: string | undefined;
+  onRunSimulation: (params: SimulationRequest) => Promise<void>;
+  simulationData: any;
   isSimulating: boolean;
-  isPlaying: boolean;
-  onPlay: () => void;
-  onPause: () => void;
   onReset: () => void;
-  playbackSpeed: number;
-  onUpdatePlaybackSpeed: (speed: number) => void;
-  currentTimeStep: number;
-  totalTimeSteps: number;
-  onUpdateTimeStep: (step: number) => void;
-  hasSimulationResults: boolean;
+  
+  // Props opcionales para funcionalidad de playback
+  isPlaying?: boolean;
+  onPlay?: () => void;
+  onPause?: () => void;
+  playbackSpeed?: number;
+  onUpdatePlaybackSpeed?: (speed: number) => void;
+  currentTimeStep?: number;
+  totalTimeSteps?: number;
+  onUpdateTimeStep?: (step: number) => void;
+}
+
+// Extended simulation parameters interface using proper types
+interface ExtendedSimulationParams {
+  // Basic parameters
+  timeSteps: number;
+  initialPopulation: number;
+  growthRate: number;
+  dispersalKernel: number;
+  
+  // Advanced general parameters
+  dtYears: number;
+  mobility: string;
+  jumpProb: number;
+  maxDispersalKm: number;
+  altitudeToleranceMin: number;
+  altitudeToleranceMax: number;
+  
+  // Habitat preferences (0-1 scale) - using proper structure
+  habitatPref: {
+    forest_closed: number;
+    forest_open: number;
+    shrubs: number;
+    herbaceous: number;
+    cropland: number;
+    urban: number;
+    snow_ice: number;
+    water: number;
+    wetland: number;
+    moss_lichen: number;
+  };
+  
+  // Climate preferences (0-1 scale) using imported type
+  climatePref: ClimatePreference;
+  
+  // Climate tolerance ranges using imported type
+  climateTolerance: ClimateTolerance;
 }
 
 const SimulationPanel: React.FC<SimulationPanelProps> = ({
-  selectedSpecies,
-  onUnselect,
-  onUpdateParams,
-  onStartSimulation,
-  onCreateCustomSpecies,
+  selectedRegionId,
+  onRunSimulation,
+  simulationData,
   isSimulating,
-  isPlaying,
+  onReset,
+  isPlaying = false,
   onPlay,
   onPause,
-  onReset,
-  playbackSpeed,
+  playbackSpeed = 1,
   onUpdatePlaybackSpeed,
-  currentTimeStep,
-  totalTimeSteps,
-  onUpdateTimeStep,
-  hasSimulationResults,
+  currentTimeStep = 0,
+  totalTimeSteps = 0,
+  onUpdateTimeStep
 }) => {
-  const [showCustomSpecies, setShowCustomSpecies] = useState(false);
-  const [showAdvancedParams, setShowAdvancedParams] = useState(false);
-  const [customSpecies, setCustomSpecies] = useState({
-    name: '',
-    type: 'plant',
-    dispersalRate: 1.0,
-    growthRate: 0.5,
-    habitatPreference: ['forest'],
+  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
+  const [activeAdvancedTab, setActiveAdvancedTab] = useState('general');
+  
+  const [speciesName, setSpeciesName] = useState('');
+
+  // Extended parameters with all the new fields using proper type structure
+  const [params, setParams] = useState<ExtendedSimulationParams>({
+    // Basic parameters
+    timeSteps: 15,
+    initialPopulation: 1,
+    growthRate: 0.9,
+    dispersalKernel: 800,
+    
+    // Advanced general parameters
+    dtYears: 30,
+    mobility: 'aerial',
+    jumpProb: 0.9,
+    maxDispersalKm: 20,
+    altitudeToleranceMin: 0,
+    altitudeToleranceMax: 3600,
+    
+    // Habitat preferences
+    habitatPref: {
+      forest_closed: 0.5,
+      forest_open: 0.3,
+      shrubs: 0.2,
+      herbaceous: 0.4,
+      cropland: 0.1,
+      urban: 0.5,
+      snow_ice: 0.0,
+      water: 0.0,
+      wetland: 0.1,
+      moss_lichen: 0.0
+    },
+    
+    // Climate preferences using proper variable name
+    climatePref: {
+      bio1: 0.5,
+      bio5: 0.4,
+      bio6: 0.4,
+      bio12: 0.6,
+      bio15: 0.3
+    },
+    
+    // Climate tolerance ranges using proper variable name
+    climateTolerance: {
+      bio1: [0, 40],
+      bio5: [10, 50],
+      bio6: [-10, 30],
+      bio12: [0, 2000],
+      bio15: [0, 80]
+    }
   });
-  const [params, setParams] = useState({
-    timeSteps: 20,
-    kernelType: 'exponential',
-    stochastic: true,
-  });
+
+  // Labels for better UX
+  const habitatLabels = {
+    forest_closed: 'Closed Forest',
+    forest_open: 'Open Forest',
+    shrubs: 'Shrubland',
+    herbaceous: 'Grassland/Herbaceous',
+    cropland: 'Cropland',
+    urban: 'Urban Areas',
+    snow_ice: 'Snow/Ice',
+    water: 'Water Bodies',
+    wetland: 'Wetlands',
+    moss_lichen: 'Moss/Lichen'
+  };
+
+  const climateLabels = {
+    bio1: 'Annual Mean Temperature (°C)',
+    bio5: 'Max Temperature of Warmest Month (°C)',
+    bio6: 'Min Temperature of Coldest Month (°C)',
+    bio12: 'Annual Precipitation (mm)',
+    bio15: 'Precipitation Seasonality (%)'
+  };
+
+  const mobilityOptions = ['aerial', 'terrestrial', 'aquatic', 'semi_aquatic'];
+
+  // DEBUG: Agregar useEffect para monitorear cambios en selectedRegionId
+  useEffect(() => {
+    console.log('SimulationPanel - selectedRegionId changed:', selectedRegionId);
+    console.log('Type of selectedRegionId:', typeof selectedRegionId);
+    console.log('selectedRegionId truthy?', !!selectedRegionId);
+  }, [selectedRegionId]);
 
   const handleParamChange = (key: string, value: any) => {
-    const newParams = { ...params, [key]: value };
-    setParams(newParams);
-    onUpdateParams(newParams);
+    setParams(prev => ({ ...prev, [key]: value }));
   };
 
-  const handleCustomSpeciesChange = (key: string, value: any) => {
-    setCustomSpecies(prev => ({ ...prev, [key]: value }));
+  const handleHabitatPrefChange = (habitat: string, value: number) => {
+    setParams(prev => ({
+      ...prev,
+      habitatPref: {
+        ...prev.habitatPref,
+        [habitat]: value
+      }
+    }));
   };
 
-  const handleSubmitCustomSpecies = () => {
-    onCreateCustomSpecies(customSpecies);
-    setShowCustomSpecies(false);
+  // Updated to use correct variable name
+  const handleClimatePreferenceChange = (climate: string, value: number) => {
+    setParams(prev => ({
+      ...prev,
+      climatePref: {
+        ...prev.climatePref,
+        [climate]: value
+      }
+    }));
+  };
+
+  // Updated to use correct variable name
+  const handleClimateToleranceChange = (climate: string, index: number, value: number) => {
+    setParams(prev => ({
+      ...prev,
+      climateTolerance: {
+        ...prev.climateTolerance,
+        [climate]: index === 0 
+          ? [value, prev.climateTolerance[climate as keyof typeof prev.climateTolerance][1]]
+          : [prev.climateTolerance[climate as keyof typeof prev.climateTolerance][0], value]
+      }
+    }));
+  };
+
+  const handleRunSimulation = async () => {
+
+    // IMPROVED VALIDATION: Más específica y con mejor mensaje de error
+    if (!selectedRegionId) {
+      console.error('No region selected - selectedRegionId is:', selectedRegionId);
+      alert(`Por favor selecciona una región primero. Valor actual: ${selectedRegionId || 'undefined'}`);
+      return;
+    }
+
+    if (!speciesName.trim()) {
+      alert('Por favor ingresa un nombre para la especie');
+      return;
+    }
+
+    // Build the complete simulation request using the exact variable structure
+    const simulationRequest: any = {
+      region_id: selectedRegionId.trim(), // FIXED: Trim whitespace
+      species_name: speciesName.trim(),
+      initial_population: params.initialPopulation,
+      growth_rate: params.growthRate,
+      dispersal_kernel: params.dispersalKernel,
+      timesteps: params.timeSteps,
+      dt_years: params.dtYears,
+      mobility: params.mobility,
+      jump_prob: params.jumpProb,
+      max_dispersal_km: params.maxDispersalKm,
+      altitude_tolerance: [params.altitudeToleranceMin, params.altitudeToleranceMax],
+      habitat_pref: {
+        forest_closed: params.habitatPref.forest_closed,
+        forest_open: params.habitatPref.forest_open,
+        shrubs: params.habitatPref.shrubs,
+        herbaceous: params.habitatPref.herbaceous,
+        cropland: params.habitatPref.cropland,
+        urban: params.habitatPref.urban,
+        snow_ice: params.habitatPref.snow_ice,
+        water: params.habitatPref.water,
+        wetland: params.habitatPref.wetland,
+        moss_lichen: params.habitatPref.moss_lichen
+      },
+      // Updated to use correct variable names
+      climate_pref: {
+        bio1: params.climatePref.bio1,
+        bio5: params.climatePref.bio5,
+        bio6: params.climatePref.bio6,
+        bio12: params.climatePref.bio12,
+        bio15: params.climatePref.bio15
+      },
+      climate_tolerance: {
+        bio1: [params.climateTolerance.bio1[0], params.climateTolerance.bio1[1]],
+        bio5: [params.climateTolerance.bio5[0], params.climateTolerance.bio5[1]],
+        bio6: [params.climateTolerance.bio6[0], params.climateTolerance.bio6[1]],
+        bio12: [params.climateTolerance.bio12[0], params.climateTolerance.bio12[1]],
+        bio15: [params.climateTolerance.bio15[0], params.climateTolerance.bio15[1]]
+      }
+    };
+
+    // ENHANCED DEBUG: Log the final request
+    console.log('Final simulation request:', simulationRequest);
+
+    try {
+      console.log('Running simulation with request... ');
+      await onRunSimulation(simulationRequest);
+    } catch (error) {
+      console.error('Error running simulation:', error);
+      alert('Error al ejecutar la simulación: ' + (error as Error).message);
+    }
+  };
+
+  const hasSimulationResults = simulationData && simulationData.length > 0;
+  
+  // IMPROVED VALIDATION: Más específica para el estado del botón
+  const canRunSimulation = selectedRegionId && speciesName.trim() !== '';
+
+  const renderAdvancedTab = () => {
+    switch (activeAdvancedTab) {
+      case 'general':
+        return (
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Time Step Duration (years): {params.dtYears}
+              </label>
+              <input
+                type="range"
+                min="1"
+                max="50"
+                step="1"
+                className="w-full"
+                value={params.dtYears}
+                onChange={(e) => handleParamChange('dtYears', parseInt(e.target.value))}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Mobility Type</label>
+              <select
+                className="w-full border border-gray-300 rounded-md py-1.5 px-3"
+                value={params.mobility}
+                onChange={(e) => handleParamChange('mobility', e.target.value)}
+              >
+                {mobilityOptions.map(option => (
+                  <option key={option} value={option}>
+                    {option.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Jump Probability: {params.jumpProb.toFixed(2)}
+              </label>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.01"
+                className="w-full"
+                value={params.jumpProb}
+                onChange={(e) => handleParamChange('jumpProb', parseFloat(e.target.value))}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Max Dispersal Distance (km): {params.maxDispersalKm}
+              </label>
+              <input
+                type="range"
+                min="1"
+                max="100"
+                step="1"
+                className="w-full"
+                value={params.maxDispersalKm}
+                onChange={(e) => handleParamChange('maxDispersalKm', parseInt(e.target.value))}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Altitude Tolerance Range (m)
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs text-gray-500">Min: {params.altitudeToleranceMin}m</label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="5000"
+                    step="50"
+                    className="w-full"
+                    value={params.altitudeToleranceMin}
+                    onChange={(e) => handleParamChange('altitudeToleranceMin', parseInt(e.target.value))}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500">Max: {params.altitudeToleranceMax}m</label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="5000"
+                    step="50"
+                    className="w-full"
+                    value={params.altitudeToleranceMax}
+                    onChange={(e) => handleParamChange('altitudeToleranceMax', parseInt(e.target.value))}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'habitat':
+        return (
+          <div className="space-y-3">
+            <p className="text-sm text-gray-600 mb-3">
+              Set habitat preferences (0 = avoided, 1 = strongly preferred)
+            </p>
+            {Object.entries(params.habitatPref).map(([habitat, value]) => (
+              <div key={habitat}>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {habitatLabels[habitat as keyof typeof habitatLabels]}: {value.toFixed(2)}
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  className="w-full"
+                  value={value}
+                  onChange={(e) => handleHabitatPrefChange(habitat, parseFloat(e.target.value))}
+                />
+              </div>
+            ))}
+          </div>
+        );
+
+      case 'climate_pref':
+        return (
+          <div className="space-y-3">
+            <p className="text-sm text-gray-600 mb-3">
+              Set climate preferences (0 = avoided, 1 = strongly preferred)
+            </p>
+            {Object.entries(params.climatePref).map(([climate, value]) => (
+              <div key={climate}>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {climateLabels[climate as keyof typeof climateLabels]}: {value.toFixed(2)}
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  className="w-full"
+                  value={value}
+                  onChange={(e) => handleClimatePreferenceChange(climate, parseFloat(e.target.value))}
+                />
+              </div>
+            ))}
+          </div>
+        );
+
+      case 'climate_tolerance':
+        return (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600 mb-3">
+              Set climate tolerance ranges (min-max values species can survive)
+            </p>
+            {Object.entries(params.climateTolerance).map(([climate, [min, max]]) => (
+              <div key={climate}>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {climateLabels[climate as keyof typeof climateLabels]}
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs text-gray-500">Min: {min}</label>
+                    <input
+                      type="number"
+                      className="w-full border border-gray-300 rounded-md py-1 px-2 text-sm"
+                      value={min}
+                      onChange={(e) => handleClimateToleranceChange(climate, 0, parseFloat(e.target.value) || 0)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">Max: {max}</label>
+                    <input
+                      type="number"
+                      className="w-full border border-gray-300 rounded-md py-1 px-2 text-sm"
+                      value={max}
+                      onChange={(e) => handleClimateToleranceChange(climate, 1, parseFloat(e.target.value) || 0)}
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+
+      default:
+        return null;
+    }
   };
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
       <div className="bg-primary-600 text-white p-4">
         <h3 className="text-lg font-semibold">Simulation Panel</h3>
+        {/* ENHANCED: Mejor display de la región con más información de debug */}
+        <div className="mt-2 p-2 bg-white/10 rounded">
+          <p className="text-xs font-medium">
+            Selected Region: {selectedRegionId || 'No region selected'}
+          </p>
+          {selectedRegionId && (
+            <p className="text-xs opacity-75 mt-1">
+              Region ready for simulation
+            </p>
+          )}
+        </div>
       </div>
 
       <div className="p-4 space-y-4">
+        {/* ENHANCED: Mejor mensaje de error */}
+        {!selectedRegionId && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+            <p className="text-sm text-amber-700 font-medium">⚠️ No Region Selected</p>
+            <p className="text-xs text-amber-600 mt-1">
+              Please select a region from the Regions tab to continue.
+            </p>
+            <p className="text-xs text-amber-500 mt-1">
+              Current value: {selectedRegionId || 'undefined'} (Type: {typeof selectedRegionId})
+            </p>
+          </div>
+        )}
+
         {isSimulating ? (
           <Loader message="Running simulation..." />
         ) : (
           <>
-            {/* Selected species or custom species creation */}
-            {selectedSpecies ? (
-              <div className="bg-primary-50 p-3 rounded-lg">
-                <div className="flex justify-between items-center mb-2">
-                  <h4 className="font-medium text-primary-800">{selectedSpecies.name}</h4>
-                  <button 
-                    className="text-gray-500 hover:text-gray-700"
-                    onClick={onUnselect}
-                  >
-                    Change
-                  </button>
-                </div>
-                <p className="text-sm text-primary-700 italic mb-1">{selectedSpecies.scientificName}</p>
-                <div className="text-xs text-primary-600">
-                  Impact: <span className="font-medium">{selectedSpecies.impactSummary}</span> | 
-                  Type: <span className="font-medium">{selectedSpecies.status}</span>
-                </div>
-              </div>
-            ) : (
+            {/* Species Name Input */}
+            <div className="space-y-3">
+              <h4 className="font-medium text-gray-800">Species Information</h4>
               <div>
-                <button
-                  className="w-full flex items-center justify-between p-3 bg-secondary-50 border border-secondary-200 text-secondary-700 rounded-lg hover:bg-secondary-100"
-                  onClick={() => setShowCustomSpecies(!showCustomSpecies)}
-                >
-                  <span>
-                    {showCustomSpecies ? 'Cancel Custom Species' : 'Create Custom Species'}
-                  </span>
-                  {showCustomSpecies ? <ChevronUp size={18} /> : <Plus size={18} />}
-                </button>
-
-                {showCustomSpecies && (
-                  <div className="mt-3 p-3 border border-gray-200 rounded-lg space-y-3">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Species Name</label>
-                      <input
-                        type="text"
-                        className="w-full border border-gray-300 rounded-md py-1.5 px-3"
-                        value={customSpecies.name}
-                        onChange={(e) => handleCustomSpeciesChange('name', e.target.value)}
-                        placeholder="e.g., Pacific Sea Lamprey"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
-                      <select
-                        className="w-full border border-gray-300 rounded-md py-1.5 px-3"
-                        value={customSpecies.type}
-                        onChange={(e) => handleCustomSpeciesChange('type', e.target.value)}
-                      >
-                        <option value="plant">Plant</option>
-                        <option value="animal">Animal</option>
-                        <option value="fungi">Fungi</option>
-                        <option value="other">Other</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Dispersal Rate (0.1-5.0)
-                      </label>
-                      <input
-                        type="range"
-                        min="0.1"
-                        max="5.0"
-                        step="0.1"
-                        className="w-full"
-                        value={customSpecies.dispersalRate}
-                        onChange={(e) => handleCustomSpeciesChange('dispersalRate', parseFloat(e.target.value))}
-                      />
-                      <div className="text-xs text-gray-500 text-right">
-                        {customSpecies.dispersalRate.toFixed(1)}
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Growth Rate (0.1-1.0)
-                      </label>
-                      <input
-                        type="range"
-                        min="0.1"
-                        max="1.0"
-                        step="0.1"
-                        className="w-full"
-                        value={customSpecies.growthRate}
-                        onChange={(e) => handleCustomSpeciesChange('growthRate', parseFloat(e.target.value))}
-                      />
-                      <div className="text-xs text-gray-500 text-right">
-                        {customSpecies.growthRate.toFixed(1)}
-                      </div>
-                    </div>
-
-                    <button
-                      className="w-full py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700"
-                      onClick={handleSubmitCustomSpecies}
-                      disabled={!customSpecies.name}
-                    >
-                      Use Custom Species
-                    </button>
-                  </div>
-                )}
+                <label className="block text-sm font-medium text-gray-700 mb-1">Species Name</label>
+                <input
+                  type="text"
+                  className="w-full border border-gray-300 rounded-md py-2 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  value={speciesName}
+                  onChange={(e) => setSpeciesName(e.target.value)}
+                  placeholder="e.g., Pacific Sea Lamprey"
+                />
               </div>
-            )}
-
-            {/* Time steps control */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Time Steps ({params.timeSteps})
-              </label>
-              <input
-                type="range"
-                min="5"
-                max="50"
-                step="5"
-                className="w-full"
-                value={params.timeSteps}
-                onChange={(e) => handleParamChange('timeSteps', parseInt(e.target.value))}
-              />
             </div>
 
-            {/* Advanced parameters toggle */}
+            {/* Parámetros básicos de simulación */}
+            <div className="space-y-3">
+              <h4 className="font-medium text-gray-800">Basic Parameters</h4>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Time Steps: {params.timeSteps}
+                </label>
+                <input
+                  type="range"
+                  min="5"
+                  max="50"
+                  step="1"
+                  className="w-full"
+                  value={params.timeSteps}
+                  onChange={(e) => handleParamChange('timeSteps', parseInt(e.target.value))}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Initial Population: {params.initialPopulation}
+                </label>
+                <input
+                  type="range"
+                  min="0.1"
+                  max="1.0"
+                  step="0.01"
+                  className="w-full"
+                  value={params.initialPopulation}
+                  onChange={(e) => handleParamChange('initialPopulation', parseFloat(e.target.value))}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Growth Rate: {params.growthRate.toFixed(2)}
+                </label>
+                <input
+                  type="range"
+                  min="0.1"
+                  max="1.0"
+                  step="0.01"
+                  className="w-full"
+                  value={params.growthRate}
+                  onChange={(e) => handleParamChange('growthRate', parseFloat(e.target.value))}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Dispersal Kernel: {params.dispersalKernel}
+                </label>
+                <input
+                  type="range"
+                  min="100"
+                  max="2000"
+                  step="50"
+                  className="w-full"
+                  value={params.dispersalKernel}
+                  onChange={(e) => handleParamChange('dispersalKernel', parseInt(e.target.value))}
+                />
+              </div>
+            </div>
+
+            {/* Advanced Settings */}
             <div>
               <button
-                className="w-full flex items-center justify-between p-2 text-sm text-gray-700 hover:bg-gray-50 rounded"
-                onClick={() => setShowAdvancedParams(!showAdvancedParams)}
+                className="w-full flex items-center justify-between p-3 bg-gray-50 border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-100"
+                onClick={() => setShowAdvancedSettings(!showAdvancedSettings)}
               >
-                <span>Advanced Parameters</span>
-                {showAdvancedParams ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                <div className="flex items-center">
+                  <Settings size={18} className="mr-2" />
+                  <span>Advanced Settings</span>
+                </div>
+                {showAdvancedSettings ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
               </button>
 
-              {showAdvancedParams && (
-                <div className="mt-2 p-3 border border-gray-200 rounded-lg space-y-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Kernel Type</label>
-                    <select
-                      className="w-full border border-gray-300 rounded-md py-1.5 px-3"
-                      value={params.kernelType}
-                      onChange={(e) => handleParamChange('kernelType', e.target.value)}
-                    >
-                      <option value="exponential">Exponential</option>
-                      <option value="gaussian">Gaussian</option>
-                      <option value="fat-tailed">Fat-tailed</option>
-                    </select>
-                    <p className="mt-1 text-xs text-gray-500">
-                      Determines how far organisms disperse from their origin.
-                    </p>
+              {showAdvancedSettings && (
+                <div className="mt-3 border border-gray-200 rounded-lg">
+                  {/* Tab Navigation */}
+                  <div className="flex border-b border-gray-200">
+                    {[
+                      { id: 'general', label: 'General' },
+                      { id: 'habitat', label: 'Habitat' },
+                      { id: 'climate_pref', label: 'Climate Pref.' },
+                      { id: 'climate_tolerance', label: 'Climate Tol.' }
+                    ].map(tab => (
+                      <button
+                        key={tab.id}
+                        className={`flex-1 py-2 px-3 text-sm font-medium border-b-2 ${
+                          activeAdvancedTab === tab.id
+                            ? 'border-primary-500 text-primary-600 bg-primary-50'
+                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                        }`}
+                        onClick={() => setActiveAdvancedTab(tab.id)}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
                   </div>
 
-                  <div className="flex items-center">
-                    <input
-                      type="checkbox"
-                      id="stochastic"
-                      checked={params.stochastic}
-                      onChange={(e) => handleParamChange('stochastic', e.target.checked)}
-                      className="mr-2 h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                    />
-                    <label htmlFor="stochastic" className="text-sm font-medium text-gray-700">
-                      Stochastic (random variation)
-                    </label>
+                  {/* Tab Content */}
+                  <div className="p-4 max-h-96 overflow-y-auto">
+                    {renderAdvancedTab()}
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Run simulation button */}
+            {/* Botón de ejecutar simulación */}
             <button
               className="w-full py-3 bg-primary-600 text-white font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              onClick={onStartSimulation}
-              disabled={!selectedSpecies && !showCustomSpecies}
+              onClick={handleRunSimulation}
+              disabled={!canRunSimulation}
             >
               {hasSimulationResults ? 'Run New Simulation' : 'Run Simulation'}
             </button>
+
+            {/* ENHANCED: Mensaje de error más específico */}
+            {!selectedRegionId && (
+              <div className="text-center space-y-1">
+                <p className="text-sm text-amber-600">
+                  Please select a region on the map first
+                </p>
+                <p className="text-xs text-gray-500">
+                  Current region ID: {selectedRegionId || 'undefined'}
+                </p>
+              </div>
+            )}
+            
+            {(!speciesName.trim()) && selectedRegionId && (
+              <div className="text-center">
+                <p className="text-sm text-amber-600">
+                  Please enter a species name
+                </p>
+              </div>
+            )}
           </>
         )}
 
-        {/* Simulation playback controls (visible only when simulation results are available) */}
-        {hasSimulationResults && (
+        {/* Controles de reproducción */}
+        {hasSimulationResults && onPlay && onPause && totalTimeSteps > 0 && (
           <div className="border-t pt-4 mt-4">
             <div className="flex items-center justify-between mb-2">
               <div className="text-sm font-medium text-gray-700">
                 Time Step: {currentTimeStep + 1} / {totalTimeSteps}
               </div>
-              <div className="flex items-center space-x-1">
-                <span className="text-xs text-gray-500">Speed:</span>
-                <select
-                  className="text-xs border border-gray-300 rounded-md p-1"
-                  value={playbackSpeed}
-                  onChange={(e) => onUpdatePlaybackSpeed(parseFloat(e.target.value))}
-                >
-                  <option value="0.5">0.5x</option>
-                  <option value="1">1x</option>
-                  <option value="2">2x</option>
-                  <option value="4">4x</option>
-                </select>
-              </div>
+              {onUpdatePlaybackSpeed && (
+                <div className="flex items-center space-x-1">
+                  <span className="text-xs text-gray-500">Speed:</span>
+                  <select
+                    className="text-xs border border-gray-300 rounded-md p-1"
+                    value={playbackSpeed}
+                    onChange={(e) => onUpdatePlaybackSpeed(parseFloat(e.target.value))}
+                  >
+                    <option value="0.5">0.5x</option>
+                    <option value="1">1x</option>
+                    <option value="2">2x</option>
+                    <option value="4">4x</option>
+                  </select>
+                </div>
+              )}
             </div>
             
-            <input
-              type="range"
-              min="0"
-              max={totalTimeSteps - 1}
-              value={currentTimeStep}
-              onChange={(e) => onUpdateTimeStep(parseInt(e.target.value))}
-              className="w-full mb-3"
-            />
+            {onUpdateTimeStep && (
+              <input
+                type="range"
+                min="0"
+                max={totalTimeSteps - 1}
+                value={currentTimeStep}
+                onChange={(e) => onUpdateTimeStep(parseInt(e.target.value))}
+                className="w-full mb-3"
+              />
+            )}
             
             <div className="flex justify-between">
               {isPlaying ? (

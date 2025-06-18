@@ -7,15 +7,17 @@ import { useMapInteraction } from '../../hooks/useMapInteraction';
 import { useEnvironmentLayers } from '../../hooks/useEnvironmentLayers';
 import SimulationLayer from './SimulationLayer';
 import EnvironmentLayersControl from './EnvironmentLayersControl';
-import { SimulationTimeStep, Layer } from '../../types';
+import { SimulationResult, Layer } from '../../types';
+import { ReactNode } from 'react';
 
 // Fix Leaflet icons (tu código actual sigue igual)
 
 interface MapContainerProps {
   onRegionSelected?: (bbox: any, polygon: any) => void;
-  currentTimeStep?: SimulationTimeStep;
+  currentTimeStep?: SimulationResult;
   environmentLayers?: Layer[];
   className?: string;
+  children?: ReactNode; 
 }
 
 const MapContainer: React.FC<MapContainerProps> = ({
@@ -23,6 +25,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
   currentTimeStep,
   environmentLayers = [],
   className,
+  children, 
 }) => {
   const [featureGroup, setFeatureGroup] = useState<L.FeatureGroup | null>(null);
   const { 
@@ -96,6 +99,9 @@ const MapContainer: React.FC<MapContainerProps> = ({
         {currentTimeStep && (
           <SimulationLayer timeStep={currentTimeStep} />
         )}
+
+        {children}
+        
       </LeafletMapContainer>
 
       {/* Botones de control */}

@@ -7,6 +7,8 @@ from fastapi.encoders import jsonable_encoder
 from app.models.region import RegionCreateRequest, RegionResponse, RegionCreateResponse
 from app.core.firebase import db
 from app.services.species_service import generate_invasive_species_summary
+from typing import List
+from app.models.region import RegionListResponse
 
 router = APIRouter()
 
@@ -68,3 +70,23 @@ async def read_region(region_id: str):
         species_generated_at=data["species_generated_at"],
         species_list=data["species_list"]
     )
+
+@router.get(
+        "/",
+        response_model=RegionListResponse,
+        summary="Listar todas las regiones"
+)
+async def list_regions():
+    regions_ref = db.collection("regions")
+    docs = regions_ref.stream()
+    regions = []
+    for doc in docs:
+        data = doc.to_dict()
+        regions.append({
+            "id": doc.id,
+            "name": data.get("name"),
+            "points": data.get("points"),
+            "species_generated_at": data.get("species_generated_at"),
+            "species_list": data.get("species_list"),
+        })
+    return RegionListResponse(regions=regions)
