@@ -375,8 +375,20 @@ def build_suitability_and_barrier(
 
     # — 5) Barrier fija —
     barrier = np.zeros((H, W), dtype=np.float32)
+    # Permanent water bodies (cód. 80) → barrera total
     barrier[class_arr == 80] = 1.0
+
+    # Bare / sparse vegetation (cód. 60) → barrera moderada
     barrier[class_arr == 60] = 0.7
+
+    # Cropland (cód. 40) → barrera baja
+    barrier[class_arr == 40] = 0.3
+
+    # Urban / built-up (cód. 50) → barrera alta
+    barrier[class_arr == 50] = 0.85
+
+    # Open sea (cód. 200) → barrera total (igual que agua)
+    barrier[class_arr == 200] = 1.0
 
     # — 6) Devolver —
     meta.update({
