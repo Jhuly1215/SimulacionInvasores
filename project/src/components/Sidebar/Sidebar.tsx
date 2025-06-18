@@ -2,11 +2,13 @@ import React, { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../UI/Tabs';
 import RegionsList from './RegionsList';
 import SimulationPanel from './SimulationPanel';
+import SimulationSteps from './simulationSteps';
 import LayersPanel from './LayersPanel';
 import ResultsPanel from './ResultsPanel';
 import { Species, Layer, SimulationResult, SimulationRequest, Region } from '../../types';
 
 interface SidebarProps {
+  // Region
   regions: Region[];
   isLoading: boolean;
   error: Error | null;
@@ -15,6 +17,7 @@ interface SidebarProps {
   onRefresh: () => void;
   showFilters?: boolean;
 
+  //species
   species?: Species[];
   speciesLoading?: boolean;
   speciesError?: Error | null;
@@ -22,10 +25,12 @@ interface SidebarProps {
   onSelectSpecies?: (species: Species) => void;
   selectedSpecies?: Species | null;
   
+  // Enviroment
   environmentLayers: Layer[];
   layersLoading: boolean;
   onToggleLayer: (layerId: string) => void;
-  
+
+  // Simulation
   simulationData: any;
   onResetSimulation: () => void;
   onUpdateSimulationParams?: (params: any) => void;
@@ -45,6 +50,10 @@ interface SidebarProps {
   
   simulationResult?: SimulationResult | null;
   onRequestLLMAnalysis?: () => void;
+
+  selectedUrl?: number;
+  onSelectedUrlChange?: (url: number) => void;
+  simulationRequest?: SimulationRequest | null;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -60,11 +69,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   // species props
   selectedSpecies,
 
-  //layers props
-  environmentLayers,
-  layersLoading,
-  onToggleLayer,
-
   // simulation props
   simulationData,
   onRunSimulation,
@@ -76,14 +80,17 @@ const Sidebar: React.FC<SidebarProps> = ({
   isPlaying,
   onPlay,
   onPause,
-  onReset,
   playbackSpeed,
   onUpdatePlaybackSpeed,
   currentTimeStep,
   totalTimeSteps,
   onUpdateTimeStep,
-  
+
+  // Simulation
   simulationResult,
+  selectedUrl = 0,
+  onSelectedUrlChange,
+  simulationRequest,
 }) => {
   const [activeTab, setActiveTab] = useState('species');
   
@@ -98,6 +105,11 @@ const Sidebar: React.FC<SidebarProps> = ({
   React.useEffect(() => {
     console.log('Sidebar selectedRegionId changed:', selectedRegionId);
   }, [selectedRegionId]);
+
+  // Debug: Log when selectedRegionId changes
+  React.useEffect(() => {
+    console.log('cargando staps con:', simulationRequest?.timesteps, " y ", simulationRequest?.dt_years);
+  }, [simulationRequest]);
   
   return (
     <div className="h-full flex flex-col overflow-hidden bg-gray-50 shadow-lg">
@@ -116,9 +128,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         <TabsList className="p-2 bg-white border-b">
           <TabsTrigger value="species">Regions</TabsTrigger>
           <TabsTrigger value="simulation">Simulation</TabsTrigger>
-          <TabsTrigger value="layers">Layers</TabsTrigger>
           <TabsTrigger value="results">Results</TabsTrigger>
-          <TabsTrigger value="analysis">Analysis</TabsTrigger>
         </TabsList>
         
         <div className="flex-1 overflow-y-auto p-4">
@@ -153,20 +163,21 @@ const Sidebar: React.FC<SidebarProps> = ({
               totalTimeSteps={totalTimeSteps}
               onUpdateTimeStep={onUpdateTimeStep}
             />
+            {simulationRequest && (
+              <div className="mt-4">
+                <SimulationSteps
+                  timesteps={simulationRequest.timesteps}
+                  dt_years={simulationRequest.dt_years}
+                  selectedUrl={selectedUrl}
+                  onSelectedUrlChange={onSelectedUrlChange || (() => {})}
+                  isPlaying={isPlaying}
+                  onPlay={onPlay}
+                  onPause={onPause}
+                />
+              </div>
+            )}
+
           </TabsContent>
-          
-          <TabsContent value="layers">
-            <LayersPanel
-              layers={environmentLayers}
-              isLoading={layersLoading}
-              onToggleLayer={onToggleLayer}
-            />
-          </TabsContent>
-          
-          <TabsContent value="results">
-            <ResultsPanel simulationResult={simulationResult} />
-          </TabsContent>
-          
         </div>
       </Tabs>
     </div>

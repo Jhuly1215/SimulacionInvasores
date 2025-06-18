@@ -3,6 +3,7 @@ import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import MapContainer from './components/Map/MapContainer';
 import Sidebar from './components/Sidebar/Sidebar';
+import GeoTiffLayer from './components/GeoTiffLayer';
 import { useSpeciesList } from './hooks/useSpeciesList';
 import { useEnvironmentLayers } from './hooks/useEnvironmentLayers';
 import { useSimulation } from './hooks/useSimulation';
@@ -13,6 +14,8 @@ import { Region, SimulationRequest, SimulationResult } from './types';
 function App() {
   
   const [AppRegion, setAppRegion] = useState<string | undefined>(undefined);
+  const [selectedUrl, setSelectedUrl] = useState<number>(0);
+  const [simulationRequest, setSimulationRequest] = useState<SimulationRequest | undefined>(undefined);
 
   // Region list hook - manages regions and their interactions
   const {  
@@ -78,6 +81,12 @@ function App() {
     simulationResult
   } = useSimulation();
 
+  // handler para selectedUrl
+  const handleSelectedUrlChange = useCallback((url: number) => {
+  setSelectedUrl(url);
+  console.log("selected url: ", url)
+}, []);
+
   // Handle creating a new region
   const handleCreateRegion = useCallback(async (name: string, speciesList: any[] = []) => {
     if (!canCreateRegion) {
@@ -102,6 +111,7 @@ function App() {
   // Handle starting a simulation
   const handleRunSimulation = useCallback(async (simulationRequest: SimulationRequest) => {
   console.log('Simulation request received in App:', simulationRequest);
+  setSimulationRequest(simulationRequest)
   
   if (!AppRegion) {
     return;
@@ -123,6 +133,7 @@ function App() {
     setAppRegion(undefined);
     setVisibleLayers([]);
     toast.info('Todos los datos han sido limpiados');
+    setSelectedUrl(0);
   }, [clearDrawings, clearSpecies, resetSimulation, setVisibleLayers]);
 
   // simulation check
@@ -191,6 +202,10 @@ function App() {
           isSimulating={simulationLoading || isSimulationRunning}
           onRunSimulation={handleRunSimulation}
           onResetSimulation={resetSimulation}
+          // Simulation Steps
+          selectedUrl={selectedUrl}
+          onSelectedUrlChange={handleSelectedUrlChange}
+          simulationRequest={simulationRequest}
 
           // Utility functions
           onClearAll={handleClearAll}
@@ -213,9 +228,11 @@ function App() {
           
           // Simulation data
           simulationData={simulationData}
-          
-          // Event handlers - removido onRegionClick para simplificar
-        />
+        >
+          {simulationResult?.Time_stemp_URL && simulationResult.Time_stemp_URL[selectedUrl] && (
+            <GeoTiffLayer storagePath={simulationResult.Time_stemp_URL[selectedUrl]} />
+          )}
+        </MapContainer>
       </div>
 
       {/* Toast notifications */}
