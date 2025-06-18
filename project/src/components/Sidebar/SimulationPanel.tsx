@@ -473,10 +473,6 @@ const SimulationPanel: React.FC<SimulationPanelProps> = ({
               Region ready for simulation
             </p>
           )}
-          {/* TEMPORAL DEBUG INFO - remover en producción */}
-          <p className="text-xs opacity-50 mt-1">
-            Debug: Type: {typeof selectedRegionId}, Length: {selectedRegionId?.length || 0}
-          </p>
         </div>
       </div>
 
